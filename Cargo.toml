@@ -1,0 +1,18 @@
+[package]
+name = "sjik"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+beuk = { git = "https://github.com/dylanblokhuis/beuk", rev = "a93dd338c8a5250a765c3872eeaed0ef869fad78" }
+winit = "0.28"
+bytemuck = { version = "1.13", features = ["derive"] }
+stainless_ffmpeg = { path = "./stainless-ffmpeg" }
+cpal = "0.15.2"
+log = "0.4.19"
+spin_sleep = "1.1.1"
+ringbuf = "0.3.3"
+simple_logger = "4.2.0"
+crossbeam-channel = "0.5.8"
