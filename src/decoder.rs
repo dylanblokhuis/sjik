@@ -280,6 +280,7 @@ impl MediaDecoder {
                         "yuv420p10le" => self.frame_to_yuv420_3_plane(frame),
                         "dxva2_vld" => self.frame_to_yuv420_3_plane(frame),
                         "cuda" => self.frame_to_yuv420_3_plane(frame),
+                        "videotoolbox_vld" => self.frame_to_yuv420_3_plane(frame),
                         x => panic!("Unsupported pixel format {x}"),
                     };
                     log::debug!("color_data {:?}", color_data.len());
