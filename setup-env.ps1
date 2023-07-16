@@ -18,3 +18,18 @@ $files = Get-ChildItem -Path $source -File
 foreach ($file in $files) {
     Copy-Item -Path $file.FullName -Destination $target
 }
+
+$target = '.\target\release'
+
+# Create the target directory if it does not exist
+if (!(Test-Path -Path $target)) {
+    New-Item -ItemType directory -Path $target
+}
+
+# Get all files from the source directory
+$files = Get-ChildItem -Path $source -File
+
+# Copy all files to the target directory
+foreach ($file in $files) {
+    Copy-Item -Path $file.FullName -Destination $target
+}

@@ -142,7 +142,7 @@ dependencies = [
 [[package]]
 name = "beuk"
 version = "0.1.0"
-source = "git+https://github.com/dylanblokhuis/beuk?rev=a93dd338c8a5250a765c3872eeaed0ef869fad78#a93dd338c8a5250a765c3872eeaed0ef869fad78"
+source = "git+https://github.com/dylanblokhuis/beuk?rev=ed9a447949204f0aee91d717cf4b84b35b3260fe#ed9a447949204f0aee91d717cf4b84b35b3260fe"
 dependencies = [
  "arrayvec",
  "ash",
@@ -1555,6 +1555,7 @@ dependencies = [
  "bytemuck",
  "cpal",
  "crossbeam-channel",
+ "crossbeam-utils",
  "log",
  "ringbuf",
  "simple_logger",

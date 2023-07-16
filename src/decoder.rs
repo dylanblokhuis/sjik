@@ -1,5 +1,4 @@
 use std::collections::{HashMap, VecDeque};
-use std::mem::size_of_val;
 use std::slice;
 use std::sync::{Arc, Mutex};
 
@@ -33,7 +32,7 @@ impl MediaDecoder {
     {
         let mut probe = Probe::new(path_or_url);
         probe.process(log::LevelFilter::Off).unwrap();
-        // println!("{:?}", probe);
+        println!("{}", probe.format.unwrap());
 
         let mut format_context = FormatContext::new(path_or_url).unwrap();
         format_context.open_input().unwrap();
@@ -73,6 +72,45 @@ impl MediaDecoder {
 
         let resample_rate = 48000;
         let channels = 2;
+
+        let video_graph = {
+            let mut video_graph = FilterGraph::new().unwrap();
+            video_graph
+                .add_input_from_video_decoder("source_video", &video_decoder)
+                .unwrap();
+
+            let format_filter = {
+                let mut parameters = HashMap::new();
+
+                parameters.insert(
+                    "pix_fmts".to_string(),
+                    // yuv420p, yuv444p, yuv422p, yuv420p10le, yuv444p10le, yuv422p10le
+                    ParameterValue::String("yuv420p".to_string()),
+                );
+
+                let filter = Filter {
+                    name: "format".to_string(),
+                    label: Some("Format video".to_string()),
+                    parameters,
+                    inputs: None,
+                    outputs: None,
+                };
+
+                video_graph.add_filter(&filter).unwrap()
+            };
+
+            video_graph.add_video_output("main_video").unwrap();
+
+            video_graph
+                .connect_input("source_video", 0, &format_filter, 0)
+                .unwrap();
+            video_graph
+                .connect_output(&format_filter, 0, "main_video", 0)
+                .unwrap();
+            video_graph.validate().unwrap();
+
+            video_graph
+        };
 
         //  audio graph
         let audio_graph = {
@@ -118,44 +156,6 @@ impl MediaDecoder {
             audio_graph.validate().unwrap();
 
             audio_graph
-        };
-
-        let video_graph = {
-            let mut video_graph = FilterGraph::new().unwrap();
-            video_graph
-                .add_input_from_video_decoder("source_video", &video_decoder)
-                .unwrap();
-
-            let format_filter = {
-                let mut parameters = HashMap::new();
-                parameters.insert(
-                    "pix_fmts".to_string(),
-                    // yuv420p, yuv444p
-                    ParameterValue::String("yuv420p".to_string()),
-                );
-
-                let filter = Filter {
-                    name: "format".to_string(),
-                    label: Some("Format video".to_string()),
-                    parameters,
-                    inputs: None,
-                    outputs: None,
-                };
-
-                video_graph.add_filter(&filter).unwrap()
-            };
-
-            video_graph.add_video_output("main_video").unwrap();
-
-            video_graph
-                .connect_input("source_video", 0, &format_filter, 0)
-                .unwrap();
-            video_graph
-                .connect_output(&format_filter, 0, "main_video", 0)
-                .unwrap();
-            video_graph.validate().unwrap();
-
-            video_graph
         };
 
         let video_queue = Arc::new(Mutex::new(VecDeque::with_capacity(10)));
@@ -234,14 +234,16 @@ impl MediaDecoder {
 
                 unsafe {
                     let bet: i64 = (*frame.frame).best_effort_timestamp;
+
                     let sw_frame = av_frame_alloc();
-                    let tmp_frame =
-                        if (*frame.frame).format == self.video_decoder.pixel_format as i32 {
-                            av_hwframe_transfer_data(sw_frame, frame.frame, 0);
-                            sw_frame
-                        } else {
-                            frame.frame
-                        };
+                    let tmp_frame = if (*frame.frame).format
+                        == self.video_decoder.hw_pixel_format.unwrap() as i32
+                    {
+                        av_hwframe_transfer_data(sw_frame, frame.frame, 0);
+                        sw_frame
+                    } else {
+                        frame.frame
+                    };
 
                     let (_, frames) = self
                         .video_graph
@@ -260,11 +262,27 @@ impl MediaDecoder {
                         (*self.format_context.get_stream(self.video_stream_index)).time_base;
                     let pts_nano = av_rescale_q(bet, stream, av_make_q(1, ONE_NANOSECOND as i32));
 
-                    // let size = ((*frame.frame).height * (*frame.frame).linesize[0]) as usize;
-                    // println!("the_size {:?}", (*frame.frame).linesize.len());
+                    let frame = *frame.frame;
+                    log::debug!("ln 0 {:?}", frame.linesize[0]);
+                    log::debug!("ln 1 {:?}", frame.linesize[1]);
+                    log::debug!("ln 2 {:?}", frame.linesize[2]);
+                    log::debug!("ln 3 {:?}", frame.linesize[3]);
+                    log::debug!("ln 4 {:?}", frame.linesize[4]);
 
-                    let color_data = Self::frame_to_yuv(frame.frame);
-                    println!("color_data {:?}", color_data.len());
+                    log::debug!("d 0 {:?}", frame.data[0]);
+                    log::debug!("d 1 {:?}", frame.data[1]);
+                    log::debug!("d 2 {:?}", frame.data[2]);
+                    log::debug!("d 3 {:?}", frame.data[3]);
+                    log::debug!("d 4 {:?}", frame.data[4]);
+
+                    let color_data = match self.video_decoder.get_pix_fmt_name().as_str() {
+                        "yuv420p" => self.frame_to_yuv420_3_plane(frame),
+                        "yuv420p10le" => self.frame_to_yuv420_3_plane(frame),
+                        "dxva2_vld" => self.frame_to_yuv420_3_plane(frame),
+                        "cuda" => self.frame_to_yuv420_3_plane(frame),
+                        x => panic!("Unsupported pixel format {x}"),
+                    };
+                    log::debug!("color_data {:?}", color_data.len());
                     self.video_queue
                         .lock()
                         .unwrap()
@@ -295,29 +313,71 @@ impl MediaDecoder {
         }
     }
 
-    pub unsafe fn frame_to_yuv(frame: *mut AVFrame) -> Vec<u8> {
-        let frame = *frame;
-        println!("ln 0 {:?}", frame.linesize[0]);
-        println!("ln 1 {:?}", frame.linesize[1]);
-        // println!("ln 2 {:?}", frame.linesize[2]);
+    pub unsafe fn frame_to_yuv420_3_plane(&self, frame: AVFrame) -> Vec<u8> {
+        let height = frame.height;
 
-        println!("d 0 {:?}", frame.data[0]);
-        println!("d 1 {:?}", frame.data[1]);
-        // println!("d 2 {:?}", frame.data[2]);
+        let y_plane_size = (frame.linesize[0] * height) as usize;
+        let u_plane_size = (frame.linesize[1] * (height / 2)) as usize;
+        let v_plane_size = (frame.linesize[2] * (height / 2)) as usize;
 
+        log::debug!("y size {:?}", y_plane_size);
+        log::debug!("u size {:?}", u_plane_size);
+        log::debug!("v size {:?}", v_plane_size);
+
+        let mut vec = vec![0; y_plane_size + u_plane_size + v_plane_size];
+
+        let y = slice::from_raw_parts(frame.data[0], y_plane_size);
+        let u = slice::from_raw_parts(frame.data[1], u_plane_size);
+        let v = slice::from_raw_parts(frame.data[2], v_plane_size);
+
+        vec[..y_plane_size].copy_from_slice(y);
+        vec[y_plane_size..(y_plane_size + u_plane_size)].copy_from_slice(u);
+        vec[(y_plane_size + u_plane_size)..].copy_from_slice(v);
+
+        vec
+    }
+
+    pub unsafe fn frame_to_yuv420_2_plane(&self, frame: AVFrame) -> Vec<u8> {
+        let height = frame.height;
+
+        let y_plane_size = (frame.linesize[0] * height) as usize;
+        let uv_plane_size = (frame.linesize[1] * (height / 2)) as usize;
+
+        log::debug!("y size {:?}", y_plane_size);
+        log::debug!("uv size {:?}", uv_plane_size);
+
+        let mut vec = vec![0; y_plane_size + uv_plane_size];
+
+        let y = slice::from_raw_parts(frame.data[0], y_plane_size);
+        let uv = slice::from_raw_parts(frame.data[1], uv_plane_size);
+
+        vec[..y_plane_size].copy_from_slice(y);
+        vec[y_plane_size..].copy_from_slice(uv);
+
+        vec
+    }
+
+    pub unsafe fn frame_to_yuv420_101e(&self, frame: AVFrame) -> Vec<u8> {
         let width = frame.width;
         let height = frame.height;
+
         let size = (width * height) as usize;
 
-        println!("y {:?}", size);
-        println!("uv {:?}", size / 2);
-        let mut vec = vec![0; size + size / 2];
+        log::debug!("y size {:?}", size);
+        log::debug!("u size {:?}", size / 2);
+        log::debug!("v size {:?}", size / 2);
+        let mut vec = vec![0; size + (size / 2) + (size / 2)];
         let y = slice::from_raw_parts(frame.data[0], size);
-        let uv = slice::from_raw_parts(frame.data[1], size / 2);
+        let u = slice::from_raw_parts(frame.data[1], size / 2);
+        let v = slice::from_raw_parts(frame.data[2], size / 2);
 
+        log::debug!("copy y");
         vec[..size].copy_from_slice(y);
-        vec[size..].copy_from_slice(uv);
-
+        log::debug!("copy u");
+        vec[size..(size + size / 2)].copy_from_slice(u);
+        log::debug!("copy v");
+        vec[(size + size / 2)..].copy_from_slice(v);
+        log::debug!("done");
         vec
     }
 }
