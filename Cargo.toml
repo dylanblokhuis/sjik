@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-beuk = { git = "https://github.com/dylanblokhuis/beuk", rev = "fc2af4198f7371869820387785939649b7c278f6" }
+beuk = { git = "https://github.com/dylanblokhuis/beuk", rev = "b49a577b4e1622367f670662e873ede35eba828f" }
 winit = "0.28"
 bytemuck = { version = "1.13", features = ["derive"] }
 stainless_ffmpeg = { path = "./stainless-ffmpeg" }
@@ -17,3 +17,4 @@ ringbuf = "0.3.3"
 simple_logger = "4.2.0"
 crossbeam-channel = "0.5.8"
 crossbeam-utils = "0.8"
+lyon = "1.0.1"

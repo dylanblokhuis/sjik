@@ -3,6 +3,7 @@ use beuk::raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use crossbeam_utils::atomic::AtomicCell;
 use decoder::MediaDecoder;
 use media_render_pass::MediaRenderPass;
+use ui_render_pass::UiRenderNode;
 use winit::event::VirtualKeyCode;
 use winit::{
     event::{Event, WindowEvent},
@@ -14,6 +15,7 @@ use std::sync::{Arc, RwLock};
 
 mod decoder;
 mod media_render_pass;
+mod ui_render_pass;
 
 fn main() {
     simple_logger::SimpleLogger::new().env().init().unwrap();
@@ -38,7 +40,7 @@ fn main() {
         let video_size = video_size.clone();
 
         move || {
-            let mut media_decoder = MediaDecoder::new("http://192.168.178.49:32400/library/parts/1689/1688954717/file.mkv?download=1&X-Plex-Token=J3j74Py7w49SsXrq3ThS", move|frame| {
+            let mut media_decoder = MediaDecoder::new("http://192.168.178.49:32400/library/parts/1717/1689522231/file.mkv?download=1&X-Plex-Token=J3j74Py7w49SsXrq3ThS", move|frame| {
                 tx.send(frame).unwrap();
             });
             let (width, height) = media_decoder.get_video_size();
@@ -49,6 +51,8 @@ fn main() {
 
     let media_node =
         std::sync::Arc::new(RwLock::new(MediaRenderPass::new(&mut ctx.write().unwrap())));
+
+    let mut ui_node = UiRenderNode::new(&mut ctx.write().unwrap());
 
     std::thread::spawn({
         let video_size = video_size.clone();
@@ -106,7 +110,13 @@ fn main() {
             window.request_redraw();
         }
         Event::RedrawRequested(_) => {
-            media_node.read().unwrap().draw(&mut ctx.write().unwrap());
+            let present_index = ctx.read().unwrap().acquire_present_index();
+            media_node
+                .read()
+                .unwrap()
+                .draw(&mut ctx.write().unwrap(), present_index);
+            ui_node.draw(&mut ctx.write().unwrap(), present_index);
+            ctx.write().unwrap().present_submit(present_index);
         }
         _ => (),
     });

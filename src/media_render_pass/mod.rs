@@ -25,7 +25,7 @@ struct Uniform {
 }
 
 pub struct MediaRenderPass {
-    pipeline_handle: PipelineHandle,
+    pipeline_handle: Option<PipelineHandle>,
     vertex_buffer: BufferHandle,
     index_buffer: BufferHandle,
     pub yuv: Option<TextureHandle>,
@@ -35,21 +35,6 @@ pub struct MediaRenderPass {
 
 impl MediaRenderPass {
     pub fn new(ctx: &mut RenderContext) -> Self {
-        let vertex_shader = Shader::from_source_text(
-            &ctx.device,
-            include_str!("./shader.vert"),
-            "shader.vert",
-            beuk::shaders::ShaderKind::Vertex,
-            "main",
-        );
-
-        let fragment_shader = Shader::from_source_text(
-            &ctx.device,
-            include_str!("./shader.frag"),
-            "shader.frag",
-            beuk::shaders::ShaderKind::Fragment,
-            "main",
-        );
         let vertex_buffer = ctx.buffer_manager.create_buffer_with_data(
             "vertices",
             bytemuck::cast_slice(&[
@@ -89,6 +74,70 @@ impl MediaRenderPass {
             MemoryLocation::CpuToGpu,
         );
 
+        Self {
+            pipeline_handle: None,
+            vertex_buffer,
+            index_buffer,
+            yuv: None,
+            frame_buffer: None,
+            uniform_buffer: None,
+        }
+    }
+
+    pub fn setup_buffers(
+        &mut self,
+        ctx: &mut RenderContext,
+        (video_width, video_height, bytes_per_pixel): (u32, u32, u32),
+    ) {
+        if self.yuv.is_some() && self.frame_buffer.is_some() && self.uniform_buffer.is_some() {
+            return;
+        }
+
+        let video_format = vk::Format::G8_B8R8_2PLANE_420_UNORM;
+        let index = match video_format {
+            // YUV420SP
+            vk::Format::G8_B8R8_2PLANE_420_UNORM => 0,
+            // YUV420P
+            vk::Format::G8_B8_R8_3PLANE_420_UNORM => 1,
+            // YUV420SP HDR
+            vk::Format::G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16 => 2,
+            // YUV420P HDR
+            vk::Format::G10X6_B10X6_R10X6_3PLANE_420_UNORM_3PACK16 => 3,
+            _ => panic!("Unsupported format"),
+        };
+
+        let vertex_shader = Shader::from_source_text(
+            &ctx.device,
+            include_str!("./shader.vert"),
+            "shader.vert",
+            beuk::shaders::ShaderKind::Vertex,
+            "main",
+        );
+
+        // planning on compiling this based on the required format
+        let fragment_shader = Shader::from_source_text(
+            &ctx.device,
+            r#"#version 450
+#extension GL_ARB_separate_shader_objects : enable
+#extension GL_ARB_shading_language_420pack : enable
+
+layout (set = 0, binding = 0) uniform sampler2D textureLinearYUV420P;
+layout (set = 0, binding = 1) uniform Uniform {
+    int index;
+} ubo;
+
+layout (location = 0) in vec2 o_uv;
+layout (location = 0) out vec4 a_frag_color;
+
+void main() {
+    a_frag_color = texture(textureLinearYUV420P, o_uv);
+}
+            "#,
+            "shader.frag",
+            beuk::shaders::ShaderKind::Fragment,
+            "main",
+        );
+
         let pipeline_handle =
             ctx.pipeline_manager
                 .create_graphics_pipeline(GraphicsPipelineDescriptor {
@@ -125,33 +174,6 @@ impl MediaRenderPass {
                     push_constant_range: None,
                 });
 
-        Self {
-            pipeline_handle,
-            vertex_buffer,
-            index_buffer,
-            yuv: None,
-            frame_buffer: None,
-            uniform_buffer: None,
-        }
-    }
-
-    pub fn setup_buffers(
-        &mut self,
-        ctx: &mut RenderContext,
-        (video_width, video_height, bytes_per_pixel): (u32, u32, u32),
-    ) {
-        if self.yuv.is_some() && self.frame_buffer.is_some() && self.uniform_buffer.is_some() {
-            return;
-        }
-
-        let video_format = vk::Format::G8_B8R8_2PLANE_420_UNORM;
-        let index = match video_format {
-            vk::Format::G8_B8R8_2PLANE_420_UNORM => 0,
-            vk::Format::G8_B8_R8_3PLANE_420_UNORM => 1,
-            vk::Format::G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16 => 2,
-            vk::Format::G10X6_B10X6_R10X6_3PLANE_420_UNORM_3PACK16 => 3,
-            _ => panic!("Unsupported format"),
-        };
         let (yuv, _) = ctx.texture_manager.create_texture(
             "yuv420",
             &ImageCreateInfo {
@@ -223,9 +245,7 @@ impl MediaRenderPass {
                 )
             }
             .unwrap();
-            let pipeline = ctx
-                .pipeline_manager
-                .get_graphics_pipeline(&self.pipeline_handle);
+            let pipeline = ctx.pipeline_manager.get_graphics_pipeline(&pipeline_handle);
             unsafe {
                 ctx.device.update_descriptor_sets(
                     &[
@@ -306,6 +326,7 @@ impl MediaRenderPass {
         self.yuv = Some(yuv);
         self.frame_buffer = Some(frame_buffer);
         self.uniform_buffer = Some(uniform_handle);
+        self.pipeline_handle = Some(pipeline_handle);
     }
 
     pub fn copy_yuv420_frame_to_gpu(&self, ctx: &RenderContext) {
@@ -525,8 +546,11 @@ impl MediaRenderPass {
         ctx.submit(&ctx.setup_command_buffer, ctx.setup_commands_reuse_fence);
     }
 
-    pub fn draw(&self, ctx: &mut RenderContext) {
-        let present_index = ctx.present_record(|ctx, command_buffer, present_index: u32| unsafe {
+    pub fn draw(&self, ctx: &mut RenderContext, present_index: u32) {
+        let Some(pipeline_handle) = self.pipeline_handle.as_ref() else {
+            return;
+        };
+        ctx.present_record(present_index, |ctx, command_buffer, present_index| unsafe {
             let color_attachments = &[vk::RenderingAttachmentInfo::default()
                 .image_view(ctx.render_swapchain.present_image_views[present_index as usize])
                 .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
@@ -540,9 +564,7 @@ impl MediaRenderPass {
 
             ctx.begin_rendering(command_buffer, color_attachments, None);
 
-            let pipeline = ctx
-                .pipeline_manager
-                .get_graphics_pipeline(&self.pipeline_handle);
+            let pipeline = ctx.pipeline_manager.get_graphics_pipeline(&pipeline_handle);
             pipeline.bind(&ctx.device, command_buffer);
             ctx.device.cmd_bind_vertex_buffers(
                 command_buffer,
@@ -559,6 +581,7 @@ impl MediaRenderPass {
             ctx.device.cmd_draw_indexed(command_buffer, 6, 1, 0, 0, 1);
             ctx.end_rendering(command_buffer);
         });
-        ctx.present_submit(present_index);
+
+        ctx.submit(&ctx.draw_command_buffer, ctx.draw_commands_reuse_fence);
     }
 }
