@@ -234,45 +234,44 @@ impl MediaRenderPass {
                             .dst_set(pipeline.descriptor_sets[0])
                             .dst_binding(0)
                             .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                            .dst_array_element(0)
                             .image_info(std::slice::from_ref(
                                 &vk::DescriptorImageInfo::default()
                                     .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                                     .image_view(view),
                             )),
-                        // 3 plane sampler
-                        vk::WriteDescriptorSet::default()
-                            .dst_set(pipeline.descriptor_sets[0])
-                            .dst_binding(0)
-                            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                            .dst_array_element(1)
-                            .image_info(std::slice::from_ref(
-                                &vk::DescriptorImageInfo::default()
-                                    .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                                    .image_view(view),
-                            )),
-                        // 2 plane sampler hdr
-                        vk::WriteDescriptorSet::default()
-                            .dst_set(pipeline.descriptor_sets[0])
-                            .dst_binding(0)
-                            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                            .dst_array_element(2)
-                            .image_info(std::slice::from_ref(
-                                &vk::DescriptorImageInfo::default()
-                                    .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                                    .image_view(view),
-                            )),
-                        // 3 plane sampler hdr
-                        vk::WriteDescriptorSet::default()
-                            .dst_set(pipeline.descriptor_sets[0])
-                            .dst_binding(0)
-                            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                            .dst_array_element(2)
-                            .image_info(std::slice::from_ref(
-                                &vk::DescriptorImageInfo::default()
-                                    .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                                    .image_view(view),
-                            )),
+                        // // 3 plane sampler
+                        // vk::WriteDescriptorSet::default()
+                        //     .dst_set(pipeline.descriptor_sets[0])
+                        //     .dst_binding(0)
+                        //     .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                        //     .dst_array_element(1)
+                        //     .image_info(std::slice::from_ref(
+                        //         &vk::DescriptorImageInfo::default()
+                        //             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                        //             .image_view(view),
+                        //     )),
+                        // // 2 plane sampler hdr
+                        // vk::WriteDescriptorSet::default()
+                        //     .dst_set(pipeline.descriptor_sets[0])
+                        //     .dst_binding(0)
+                        //     .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                        //     .dst_array_element(2)
+                        //     .image_info(std::slice::from_ref(
+                        //         &vk::DescriptorImageInfo::default()
+                        //             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                        //             .image_view(view),
+                        //     )),
+                        // // 3 plane sampler hdr
+                        // vk::WriteDescriptorSet::default()
+                        //     .dst_set(pipeline.descriptor_sets[0])
+                        //     .dst_binding(0)
+                        //     .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                        //     .dst_array_element(3)
+                        //     .image_info(std::slice::from_ref(
+                        //         &vk::DescriptorImageInfo::default()
+                        //             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                        //             .image_view(view),
+                        //     )),
                         // uniform
                         vk::WriteDescriptorSet::default()
                             .dst_set(pipeline.descriptor_sets[0])
