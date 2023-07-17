@@ -115,14 +115,14 @@ impl UiRenderNode {
     pub fn draw(&mut self, ctx: &mut RenderContext, present_index: u32) {
         let mut ui = UiContext::default();
         ui.div(
-            "flex-col w-full h-full justify-start items-start bg-transparent",
+            "flex-col w-full h-full justify-start items-start bg-transparent p-15",
             Props,
             |mut ui| {
                 ui.div("bg-green-500 p-30", Props, |mut ui| {
                     ui.div("bg-blue-500 p-15", Props, |x| x)
                 });
                 ui.div("bg-green-500 w-100 h-100", Props, |x| x);
-                ui.div("bg-blue-500 w-50 h-50", Props, |c| c)
+                ui.div("bg-blue-500 w-100 h-100 rounded-15", Props, |c| c)
             },
         );
 

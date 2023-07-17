@@ -1,5 +1,5 @@
 use dyn_clone::DynClone;
-use std::{collections::BTreeMap, ops::Add};
+use std::collections::BTreeMap;
 use taffy::prelude::*;
 
 use lyon::{
@@ -8,6 +8,7 @@ use lyon::{
         BuffersBuilder, FillOptions, FillTessellator, FillVertex, FillVertexConstructor,
         VertexBuffers,
     },
+    path::builder::BorderRadii,
 };
 
 use super::tailwind::Tailwind;
@@ -66,6 +67,25 @@ impl UiRenderContext {
                 &mut BuffersBuilder::new(&mut self.geometry, Custom { color }),
             )
             .unwrap();
+    }
+
+    pub fn rect_radius(&mut self, item: Box2D<f32>, radius: f32, color: [f32; 4]) {
+        let mut binding = BuffersBuilder::new(&mut self.geometry, Custom { color });
+        let options = FillOptions::default()
+            .with_sweep_orientation(lyon::lyon_tessellation::Orientation::Horizontal);
+        let mut builder = self.fill_tess.builder(&options, &mut binding);
+        builder.add_rounded_rectangle(
+            &item,
+            &BorderRadii {
+                bottom_left: radius,
+                bottom_right: radius,
+                top_left: radius,
+                top_right: radius,
+            },
+            lyon::path::Winding::Positive,
+        );
+        builder.close();
+        builder.build().unwrap();
     }
 
     pub fn finish(self) -> VertexBuffers<UiVertex, u16> {
@@ -186,10 +206,18 @@ impl UiContext {
             let min_y = 2.0 * (layout.location.y / render_context.viewport.1 as f32) - 1.0;
             let max_y = min_y + 2.0 * (layout.size.height / render_context.viewport.1 as f32);
 
-            render_context.rect(
-                Box2D::new(point(min_x, min_y), point(max_x, max_y)),
-                tw.visual_style.background_color,
-            );
+            if tw.visual_style.border_radius != [0.0; 4] {
+                render_context.rect_radius(
+                    Box2D::new(point(min_x, min_y), point(max_x, max_y)),
+                    tw.visual_style.border_radius[0],
+                    tw.visual_style.background_color,
+                );
+            } else {
+                render_context.rect(
+                    Box2D::new(point(min_x, min_y), point(max_x, max_y)),
+                    tw.visual_style.background_color,
+                );
+            }
         }
 
         render_context.finish()

@@ -5,6 +5,7 @@ use taffy::prelude::*;
 #[derive(Debug, Default, Clone, Copy)]
 pub struct VisualStyle {
     pub background_color: [f32; 4],
+    pub border_radius: [f32; 4],
 }
 
 #[derive(Debug, Default, Clone)]
@@ -90,6 +91,11 @@ impl Tailwind {
                     "stretch" => AlignItems::Stretch,
                     _ => panic!("Unknown align items {class}"),
                 })
+            }
+
+            if let Some(class) = class.strip_prefix("rounded-") {
+                let radius = class.parse::<f32>().unwrap();
+                tw.visual_style.border_radius = [radius; 4];
             }
         }
 
