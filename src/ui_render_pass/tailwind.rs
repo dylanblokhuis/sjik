@@ -1,11 +1,17 @@
 use std::collections::HashMap;
 
-#[derive(Debug, Default)]
+use taffy::prelude::*;
+
+#[derive(Debug, Default, Clone, Copy)]
+pub struct VisualStyle {
+    pub background_color: [f32; 4],    
+}
+
+#[derive(Debug, Default, Clone)]
 pub struct Tailwind {
     classes: String,
-    pub width: u32,
-    pub height: u32,
-    pub background_color: [f32; 4],
+    pub layout_style: Style,
+    pub visual_style: VisualStyle,
 }
 
 type Colors = HashMap<&'static str, HashMap<&'static str, [u32; 4]>>;
@@ -21,19 +27,26 @@ impl Tailwind {
                 .collect(),
         );
 
+        tw.layout_style = Style {
+            position: Position::Relative,
+            display: Display::Flex,
+            flex_direction: FlexDirection::Column,
+            ..Default::default()
+        };
+
         let classes: Vec<&str> = classes.split(' ').collect();
 
         for class in classes.iter() {
             if let Some(class) = class.strip_prefix("w-") {
-                tw.width = class.parse::<u32>().unwrap();
+                tw.layout_style.size.width = Dimension::Points(class.parse::<f32>().unwrap());
             }
 
             if let Some(class) = class.strip_prefix("h-") {
-                tw.height = class.parse::<u32>().unwrap();
+                tw.layout_style.size.height = Dimension::Points(class.parse::<f32>().unwrap());
             }
 
             if let Some(class) = class.strip_prefix("bg-") {
-                tw.background_color = tw.handle_color(class, &colors);
+                tw.visual_style.background_color = tw.handle_color(class, &colors);
             }
         }
 
@@ -62,7 +75,7 @@ impl Tailwind {
             *b as f32 / 255.0,
             *a as f32 / 255.0,
         ]
-    }
+    }    
 }
 
 struct Color {

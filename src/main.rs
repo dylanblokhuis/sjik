@@ -22,7 +22,7 @@ fn main() {
     let event_loop = EventLoop::new();
 
     let window = WindowBuilder::new()
-        .with_title("A fantastic window!")
+        .with_title("Sjik")
         .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0))
         .build(&event_loop)
         .unwrap();

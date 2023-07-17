@@ -1,8 +1,6 @@
 use beuk::ash::vk::{
     self, BufferUsageFlags, DeviceSize, ImageCreateInfo, PipelineVertexInputStateCreateInfo,
-    SamplerYcbcrConversionInfo,
 };
-use beuk::ctx::SamplerDesc;
 use beuk::memory::{MemoryLocation, TextureHandle};
 use beuk::{ctx::RenderContext, memory::PipelineHandle};
 use beuk::{
@@ -121,12 +119,11 @@ impl UiRenderNode {
             ui.div("bg-red-100", Props, |_| {});
         });
 
-        let mut render_context = UiRenderContext::new((
+        let render_context = UiRenderContext::new((
             ctx.render_swapchain.surface_resolution.width,
             ctx.render_swapchain.surface_resolution.height,
         ));
-        ui.finish(&mut render_context);
-        let geometry = render_context.finish();
+        let geometry = ui.finish(render_context);
         self.update_buffers(ctx, &geometry);
 
         ctx.present_record(
