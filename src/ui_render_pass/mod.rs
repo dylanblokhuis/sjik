@@ -1,7 +1,6 @@
-use beuk::ash::vk::{
-    self, BufferUsageFlags, PipelineVertexInputStateCreateInfo,
-};
+use beuk::ash::vk::{self, BufferUsageFlags, PipelineVertexInputStateCreateInfo};
 use beuk::memory::MemoryLocation;
+use beuk::pipeline::BlendState;
 use beuk::{ctx::RenderContext, memory::PipelineHandle};
 use beuk::{
     memory::BufferHandle,
@@ -74,6 +73,7 @@ impl UiRenderNode {
                     },
                     depth_stencil: Default::default(),
                     push_constant_range: None,
+                    blend: vec![BlendState::ALPHA_BLENDING],
                 });
 
         Self {
@@ -114,10 +114,17 @@ impl UiRenderNode {
 
     pub fn draw(&mut self, ctx: &mut RenderContext, present_index: u32) {
         let mut ui = UiContext::default();
-        ui.div("bg-red-200 w-200 h-200", Props, |ui| {
-            ui.div("bg-green-500 h-20", Props, |_| {});
-            ui.div("bg-blue-500 h-20", Props, |_| {});
-        });
+        ui.div(
+            "flex-col w-full h-full justify-start items-start bg-transparent",
+            Props,
+            |mut ui| {
+                ui.div("bg-green-500 p-30", Props, |mut ui| {
+                    ui.div("bg-blue-500 p-15", Props, |x| x)
+                });
+                ui.div("bg-green-500 w-100 h-100", Props, |x| x);
+                ui.div("bg-blue-500 w-50 h-50", Props, |c| c)
+            },
+        );
 
         let render_context = UiRenderContext::new((
             ctx.render_swapchain.surface_resolution.width,

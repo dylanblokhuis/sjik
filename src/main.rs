@@ -1,3 +1,5 @@
+use beuk::ash::vk::PresentModeKHR;
+use beuk::ctx::RenderContextDescriptor;
 use beuk::raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 
 use crossbeam_utils::atomic::AtomicCell;
@@ -23,14 +25,16 @@ fn main() {
 
     let window = WindowBuilder::new()
         .with_title("Sjik")
-        .with_inner_size(winit::dpi::LogicalSize::new(640.0, 360.0))
+        .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0))
         .build(&event_loop)
         .unwrap();
 
     let ctx = std::sync::Arc::new(std::sync::RwLock::new(beuk::ctx::RenderContext::new(
-        window.raw_display_handle(),
-        window.raw_window_handle(),
-        |dc| dc,
+        RenderContextDescriptor {
+            display_handle: window.raw_display_handle(),
+            window_handle: window.raw_window_handle(),
+            present_mode: PresentModeKHR::default(),
+        },
     )));
 
     let video_size: Arc<AtomicCell<Option<(u32, u32, u32)>>> = Arc::new(AtomicCell::new(None));

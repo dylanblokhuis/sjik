@@ -172,6 +172,7 @@ void main() {
                     },
                     depth_stencil: Default::default(),
                     push_constant_range: None,
+                    blend: Default::default(),
                 });
 
         let (yuv, _) = ctx.texture_manager.create_texture(
