@@ -23,7 +23,7 @@ fn main() {
 
     let window = WindowBuilder::new()
         .with_title("Sjik")
-        .with_inner_size(winit::dpi::LogicalSize::new(1280.0, 720.0))
+        .with_inner_size(winit::dpi::LogicalSize::new(640.0, 360.0))
         .build(&event_loop)
         .unwrap();
 
@@ -89,9 +89,9 @@ fn main() {
         Event::WindowEvent {
             event:
                 WindowEvent::KeyboardInput {
-                    device_id,
+                    device_id: _,
                     input,
-                    is_synthetic,
+                    is_synthetic: _,
                 },
             ..
         } => {

@@ -1,7 +1,7 @@
 use beuk::ash::vk::{
-    self, BufferUsageFlags, DeviceSize, ImageCreateInfo, PipelineVertexInputStateCreateInfo,
+    self, BufferUsageFlags, PipelineVertexInputStateCreateInfo,
 };
-use beuk::memory::{MemoryLocation, TextureHandle};
+use beuk::memory::MemoryLocation;
 use beuk::{ctx::RenderContext, memory::PipelineHandle};
 use beuk::{
     memory::BufferHandle,
@@ -114,9 +114,9 @@ impl UiRenderNode {
 
     pub fn draw(&mut self, ctx: &mut RenderContext, present_index: u32) {
         let mut ui = UiContext::default();
-        ui.div("bg-red-200 w-100 h-100", Props, |ui| {
-            ui.div("bg-red-100", Props, |_| {});
-            ui.div("bg-red-100", Props, |_| {});
+        ui.div("bg-red-200 w-200 h-200", Props, |ui| {
+            ui.div("bg-green-500 h-20", Props, |_| {});
+            ui.div("bg-blue-500 h-20", Props, |_| {});
         });
 
         let render_context = UiRenderContext::new((

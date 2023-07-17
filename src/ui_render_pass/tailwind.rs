@@ -9,7 +9,6 @@ pub struct VisualStyle {
 
 #[derive(Debug, Default, Clone)]
 pub struct Tailwind {
-    classes: String,
     pub layout_style: Style,
     pub visual_style: VisualStyle,
 }
@@ -26,11 +25,22 @@ impl Tailwind {
                 .into_iter()
                 .collect(),
         );
+        colors.insert(
+            "blue",
+            vec![("500", [59, 130, 246, 255])]
+                .into_iter()
+                .collect(),
+        );
+        colors.insert(
+            "green",
+            vec![("500", [34, 197, 94, 255])]
+                .into_iter()
+                .collect(),
+        );
 
         tw.layout_style = Style {
-            position: Position::Relative,
-            display: Display::Flex,
             flex_direction: FlexDirection::Column,
+            size: Size::AUTO,
             ..Default::default()
         };
 
@@ -78,6 +88,3 @@ impl Tailwind {
     }    
 }
 
-struct Color {
-    variants: Vec<(String, String)>,
-}

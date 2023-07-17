@@ -87,7 +87,7 @@ impl MediaRenderPass {
     pub fn setup_buffers(
         &mut self,
         ctx: &mut RenderContext,
-        (video_width, video_height, bytes_per_pixel): (u32, u32, u32),
+        (video_width, video_height, _bytes_per_pixel): (u32, u32, u32),
     ) {
         if self.yuv.is_some() && self.frame_buffer.is_some() && self.uniform_buffer.is_some() {
             return;
@@ -564,7 +564,7 @@ void main() {
 
             ctx.begin_rendering(command_buffer, color_attachments, None);
 
-            let pipeline = ctx.pipeline_manager.get_graphics_pipeline(&pipeline_handle);
+            let pipeline = ctx.pipeline_manager.get_graphics_pipeline(pipeline_handle);
             pipeline.bind(&ctx.device, command_buffer);
             ctx.device.cmd_bind_vertex_buffers(
                 command_buffer,

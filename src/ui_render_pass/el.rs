@@ -1,11 +1,11 @@
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use taffy::prelude::*;
 
 use lyon::{
     geom::{point, Box2D},
     lyon_tessellation::{
-        BuffersBuilder, FillOptions, FillTessellator, FillVertex, FillVertexConstructor,
-        VertexBuffers,
+        FillTessellator, FillVertex, FillVertexConstructor,
+        VertexBuffers, FillOptions, BuffersBuilder,
     },
 };
 
@@ -35,7 +35,6 @@ impl FillVertexConstructor<UiVertex> for Custom {
 pub struct UiRenderContext {
     geometry: VertexBuffers<UiVertex, u16>,
     fill_tess: FillTessellator,
-    taffy: Taffy,
     viewport: (u32, u32),
 }
 
@@ -48,7 +47,6 @@ impl UiRenderContext {
             geometry,
             fill_tess,
             viewport,
-            taffy: Taffy::new(),
         }
     }
     pub fn normalize_width(&self, pixel_size: f32) -> f32 {
@@ -60,13 +58,13 @@ impl UiRenderContext {
     }
 
     pub fn rect(&mut self, item: Box2D<f32>, color: [f32; 4]) {
-        // self.fill_tess
-        //     .tessellate_rectangle(
-        //         &item,
-        //         &FillOptions::DEFAULT,
-        //         &mut BuffersBuilder::new(&mut self.geometry, Custom { color }),
-        //     )
-        //     .unwrap();
+        self.fill_tess
+            .tessellate_rectangle(
+                &item,
+                &FillOptions::DEFAULT,
+                &mut BuffersBuilder::new(&mut self.geometry, Custom { color }),
+            )
+            .unwrap();
     }
 
     pub fn finish(self) -> VertexBuffers<UiVertex, u16> {
@@ -85,8 +83,8 @@ struct Div {
 }
 
 impl Node for Div {
-    fn render(&self, render_context: &mut UiRenderContext) -> Tailwind {
-        let tw = Tailwind::new(&self.classes);
+    fn render(&self, _render_context: &mut UiRenderContext) -> Tailwind {
+        
         // println!("div {}", self.classes);
         // let min_x = render_context.normalize_width(tw.width as f32 * -0.5);
         // let max_x = render_context.normalize_width(tw.width as f32 * 0.5);
@@ -94,7 +92,7 @@ impl Node for Div {
         // let max_y = render_context.normalize_height(tw.height as f32 * 0.5);
 
 
-        tw
+        Tailwind::new(&self.classes)
     }
 }
 
@@ -118,30 +116,32 @@ struct ContextNode {
 #[derive(Default)]
 pub struct UiContext {
     nodes: BTreeMap<NodeId, ContextNode>,
-    last_node: Option<NodeId>,
+    parent_node: Option<NodeId>,
 }
 
 impl UiContext {
-    pub fn div(&mut self, classes: &str, props: Props, children: impl FnOnce(&mut UiContext)) {
-        self.insert(Box::new(Div {
+    pub fn div(&mut self, classes: &str, _props: Props, children: impl FnOnce(&mut UiContext)) {
+        let node_id = self.insert(Box::new(Div {
             classes: classes.to_string(),
         }));
+        self.parent_node = Some(node_id);
         children(self);
+        self.parent_node = None;
     }
 
-    fn insert(&mut self, node: Box<dyn Node>) {
+    fn insert(&mut self, node: Box<dyn Node>) -> NodeId {
         let id = NodeId::new();
         self.nodes.insert(
             id,
             ContextNode {
-                parent: self.last_node,
+                parent: self.parent_node,
                 node,
             },
         );
-        self.last_node = Some(id);
+        id
     }
 
-    pub fn finish(self, mut render_context: UiRenderContext) -> VertexBuffers<UiVertex, u16> {        
+    pub fn finish(self, mut render_context: UiRenderContext) -> VertexBuffers<UiVertex, u16> {              
         let mut taffy = Taffy::new();
         let mut couples = Vec::<(taffy::node::Node, (NodeId, Tailwind))>::new();
         for (node_id, ctx) in self.nodes {
@@ -162,16 +162,27 @@ impl UiContext {
         }
 
         let first_node = couples.first().unwrap().0;
-        taffy.compute_layout(first_node, Size::MAX_CONTENT).unwrap();
+        taffy.compute_layout(first_node, Size {
+            width: AvailableSpace::Definite(render_context.viewport.0 as f32),
+            height: AvailableSpace::Definite(render_context.viewport.1 as f32),
+        }).unwrap();
 
         for (taffy_node, (_, tw)) in couples {
-            let layout = taffy.layout(taffy_node).unwrap();
-            let min_x = render_context.normalize_width(layout.size.width * -0.5);
-            let max_x = render_context.normalize_width(layout.size.width * 0.5);
-            let min_y = render_context.normalize_height(layout.size.height * -0.5);
-            let max_y = render_context.normalize_height(layout.size.height * 0.5);
-            
-            render_context.rect(Box2D::new(point(min_x, min_y), point(max_x, max_y)), tw.visual_style.background_color);            
+            let layout = taffy.layout(taffy_node).unwrap();            
+            // the whole screen maps from 0.0..1.0
+            println!("{} {} {} {}", layout.location.x, layout.location.y, layout.size.width, layout.size.height);
+
+            let min_x = layout.location.x - layout.size.width * 0.5;
+            let max_x = layout.location.x + layout.size.width * 0.5;
+            let min_y = layout.location.y - layout.size.height * 0.5;
+            let max_y = layout.location.y + layout.size.height * 0.5;
+
+            // println!("{} {} {} {}", min_x, max_x, min_y, max_y);
+
+            render_context.rect(Box2D::new(
+                point(render_context.normalize_width(min_x), render_context.normalize_height(min_y)),
+                point(render_context.normalize_width(max_x), render_context.normalize_height(max_y))
+            ), tw.visual_style.background_color);            
         }
 
         render_context.finish()
