@@ -9,8 +9,10 @@ use beuk::{
 };
 use el::UiVertex;
 use lyon::lyon_tessellation::VertexBuffers;
+use winit::dpi::PhysicalPosition;
+use winit::event::{ElementState, MouseButton};
 
-use self::el::{Props, UiContext, UiRenderContext};
+use self::el::{DivProps, UiContext, UiRenderContext};
 
 pub mod el;
 pub mod tailwind;
@@ -19,6 +21,8 @@ pub struct UiRenderNode {
     pipeline_handle: PipelineHandle,
     vertex_buffer: Option<BufferHandle>,
     index_buffer: Option<BufferHandle>,
+    last_mouse_position: Option<PhysicalPosition<f64>>,
+    last_mouse_button: Option<(MouseButton, ElementState)>,
 }
 
 impl UiRenderNode {
@@ -80,6 +84,8 @@ impl UiRenderNode {
             pipeline_handle,
             index_buffer: None,
             vertex_buffer: None,
+            last_mouse_position: None,
+            last_mouse_button: None,
         }
     }
 
@@ -112,24 +118,40 @@ impl UiRenderNode {
         self.index_buffer = Some(index_buffer);
     }
 
+    pub fn on_mouse_move(&mut self, position: PhysicalPosition<f64>) {
+        self.last_mouse_position = Some(position);
+    }
+
+    pub fn on_mouse_input(&mut self, button: (MouseButton, ElementState)) {
+        self.last_mouse_button = Some(button);
+    }
+
     pub fn draw(&mut self, ctx: &mut RenderContext, present_index: u32) {
         let mut ui = UiContext::default();
         ui.div(
             "flex-col w-full h-full justify-start items-start bg-transparent p-15",
-            Props,
+            DivProps::default().on_click(|| {}),
             |mut ui| {
-                ui.div("bg-green-500 p-30", Props, |mut ui| {
-                    ui.div("bg-blue-500 p-15", Props, |x| x)
+                ui.div("bg-green-500 p-30", DivProps::default(), |mut ui| {
+                    ui.div("bg-blue-500 p-15", DivProps::default(), |x| x)
                 });
-                ui.div("bg-green-500 w-100 h-100", Props, |x| x);
-                ui.div("bg-blue-500 w-100 h-100 rounded-15", Props, |c| c)
+                ui.div("bg-green-500 w-100 h-100", DivProps::default(), |x| x);
+                ui.div(
+                    "bg-blue-500 w-100 h-100 rounded-15",
+                    DivProps::default(),
+                    |c| c,
+                )
             },
         );
 
-        let render_context = UiRenderContext::new((
-            ctx.render_swapchain.surface_resolution.width,
-            ctx.render_swapchain.surface_resolution.height,
-        ));
+        let render_context = UiRenderContext::new(
+            (
+                ctx.render_swapchain.surface_resolution.width,
+                ctx.render_swapchain.surface_resolution.height,
+            ),
+            self.last_mouse_position,
+            self.last_mouse_button,
+        );
         let geometry = ui.finish(render_context);
         self.update_buffers(ctx, &geometry);
 
@@ -182,5 +204,7 @@ impl UiRenderNode {
                 ctx.end_rendering(command_buffer);
             },
         );
+
+        self.last_mouse_button = None;
     }
 }

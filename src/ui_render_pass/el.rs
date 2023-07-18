@@ -1,6 +1,9 @@
-use dyn_clone::DynClone;
-use std::collections::BTreeMap;
+use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 use taffy::prelude::*;
+use winit::{
+    dpi::PhysicalPosition,
+    event::{ElementState, MouseButton},
+};
 
 use lyon::{
     geom::{point, Box2D},
@@ -38,10 +41,16 @@ pub struct UiRenderContext {
     geometry: VertexBuffers<UiVertex, u16>,
     fill_tess: FillTessellator,
     viewport: (u32, u32),
+    mouse_position: Option<PhysicalPosition<f64>>,
+    mouse_button: Option<(MouseButton, ElementState)>,
 }
 
 impl UiRenderContext {
-    pub fn new(viewport: (u32, u32)) -> Self {
+    pub fn new(
+        viewport: (u32, u32),
+        mouse_position: Option<PhysicalPosition<f64>>,
+        mouse_button: Option<(MouseButton, ElementState)>,
+    ) -> Self {
         let fill_tess = FillTessellator::new();
         let geometry: VertexBuffers<UiVertex, u16> = VertexBuffers::new();
 
@@ -49,6 +58,8 @@ impl UiRenderContext {
             geometry,
             fill_tess,
             viewport,
+            mouse_button,
+            mouse_position,
         }
     }
     pub fn normalize_width(&self, pixel_size: f32) -> f32 {
@@ -84,7 +95,6 @@ impl UiRenderContext {
             },
             lyon::path::Winding::Positive,
         );
-        builder.close();
         builder.build().unwrap();
     }
 
@@ -93,21 +103,52 @@ impl UiRenderContext {
     }
 }
 
-trait Node: DynClone {
+trait Node {
     fn render(&self, render_context: &mut UiRenderContext) -> Tailwind;
+    fn on_click(&mut self) {}
+    fn on_hover(&mut self) {}
 }
-dyn_clone::clone_trait_object!(Node);
 
-// div
-
-#[derive(Clone)]
 struct Div {
     classes: String,
+    props: DivProps,
 }
 
 impl Node for Div {
     fn render(&self, _render_context: &mut UiRenderContext) -> Tailwind {
         Tailwind::new(&self.classes)
+    }
+
+    fn on_click(&mut self) {
+        let Some(func) = self.props.on_click.as_mut() else {
+            return;
+        };
+        func();
+    }
+
+    fn on_hover(&mut self) {
+        let Some(func) = self.props.on_hover.as_mut() else {
+            return;
+        };
+        func();
+    }
+}
+
+#[derive(Default)]
+pub struct DivProps {
+    pub on_click: Option<Box<dyn FnMut()>>,
+    pub on_hover: Option<Box<dyn FnMut()>>,
+}
+
+impl DivProps {
+    pub fn on_click(mut self, func: impl FnMut() + 'static) -> Self {
+        self.on_click = Some(Box::new(func));
+        self
+    }
+
+    pub fn on_hover(mut self, func: impl FnMut() + 'static) -> Self {
+        self.on_hover = Some(Box::new(func));
+        self
     }
 }
 
@@ -117,10 +158,10 @@ struct NodeId(usize);
 #[derive(Clone)]
 struct ContextNode {
     parent: Option<NodeId>,
-    node: Box<dyn Node>,
+    node: Rc<RefCell<dyn Node>>,
 }
 
-#[derive(Default, Clone)]
+#[derive(Default)]
 pub struct UiContext {
     nodes: BTreeMap<NodeId, ContextNode>,
     parent_node: Option<NodeId>,
@@ -130,21 +171,25 @@ impl UiContext {
     pub fn div(
         &mut self,
         classes: &str,
-        _props: Props,
+        props: DivProps,
         children: impl FnOnce(UiContext) -> UiContext,
-    ) -> UiContext {
-        let node_id = self.insert(Box::new(Div {
+    ) -> Self {
+        let node_id = self.insert(Rc::new(RefCell::new(Div {
             classes: classes.to_string(),
-        }));
-        let ctx = children(UiContext {
+            props,
+        })));
+        let ctx = children(Self {
             parent_node: Some(node_id),
             ..Default::default()
         });
         self.nodes.extend(ctx.nodes);
-        self.clone()
+        Self {
+            nodes: self.nodes.clone(),
+            parent_node: self.parent_node,
+        }
     }
 
-    fn insert(&mut self, node: Box<dyn Node>) -> NodeId {
+    fn insert(&mut self, node: Rc<RefCell<dyn Node>>) -> NodeId {
         let mut id = NodeId(self.nodes.len() + 1);
         if let Some(parent_node) = self.parent_node {
             id.0 += parent_node.0;
@@ -160,11 +205,11 @@ impl UiContext {
         id
     }
 
-    pub fn finish(self, mut render_context: UiRenderContext) -> VertexBuffers<UiVertex, u16> {
+    pub fn finish(mut self, mut render_context: UiRenderContext) -> VertexBuffers<UiVertex, u16> {
         let mut taffy = Taffy::new();
         let mut couples = Vec::<(taffy::node::Node, NodeId, Tailwind)>::new();
-        for (node_id, ctx) in self.nodes.iter() {
-            let tw = ctx.node.render(&mut render_context);
+        for (node_id, ctx) in self.nodes.iter_mut() {
+            let tw = ctx.node.borrow().render(&mut render_context);
             let taffy_id = taffy.new_leaf(tw.layout_style.clone()).unwrap();
 
             couples.push((taffy_id, *node_id, tw));
@@ -182,7 +227,7 @@ impl UiContext {
         }
 
         couples.sort_by(|a, b| {
-            b.1 .0
+            a.1 .0
                 .partial_cmp(&b.1 .0)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
@@ -197,8 +242,31 @@ impl UiContext {
             )
             .unwrap();
 
-        for (taffy_node, _, tw) in couples {
+        for (taffy_node, node_id, tw) in couples {
             let layout = taffy.layout(taffy_node).unwrap();
+
+            let min_x = layout.location.x;
+            let max_x = min_x + layout.size.width;
+            let min_y = layout.location.y;
+            let max_y = min_y + layout.size.height;
+
+            // check if click is inside this node
+            if let Some(mouse_position) = render_context.mouse_position {
+                if mouse_position.x >= min_x.into()
+                    && mouse_position.x <= max_x.into()
+                    && mouse_position.y >= min_y.into()
+                    && mouse_position.y <= max_y.into()
+                {
+                    let node = self.nodes.get_mut(&node_id).unwrap();
+                    let mut node = node.node.borrow_mut();
+                    node.on_hover();
+                    if let Some((mouse_button, state)) = render_context.mouse_button {
+                        if mouse_button == MouseButton::Left && state == ElementState::Released {
+                            node.on_click();
+                        }
+                    }
+                }
+            }
 
             // map everything to top left corner in vulkan coords (-1, -1)
             let min_x = 2.0 * (layout.location.x / render_context.viewport.0 as f32) - 1.0;
@@ -223,5 +291,3 @@ impl UiContext {
         render_context.finish()
     }
 }
-
-pub struct Props;

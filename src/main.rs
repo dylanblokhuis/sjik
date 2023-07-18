@@ -6,7 +6,7 @@ use crossbeam_utils::atomic::AtomicCell;
 use decoder::MediaDecoder;
 use media_render_pass::MediaRenderPass;
 use ui_render_pass::UiRenderNode;
-use winit::event::VirtualKeyCode;
+use winit::event::{ElementState, VirtualKeyCode};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::EventLoop,
@@ -44,12 +44,12 @@ fn main() {
         let video_size = video_size.clone();
 
         move || {
-            let mut media_decoder = MediaDecoder::new("http://192.168.178.49:32400/library/parts/1717/1689522231/file.mkv?download=1&X-Plex-Token=J3j74Py7w49SsXrq3ThS", move|frame| {
-                tx.send(frame).unwrap();
-            });
-            let (width, height) = media_decoder.get_video_size();
-            video_size.store(Some((width, height, 1)));
-            media_decoder.start();
+            // let mut media_decoder = MediaDecoder::new("http://192.168.178.49:32400/library/parts/1717/1689522231/file.mkv?download=1&X-Plex-Token=J3j74Py7w49SsXrq3ThS", move|frame| {
+            //     tx.send(frame).unwrap();
+            // });
+            // let (width, height) = media_decoder.get_video_size();
+            // video_size.store(Some((width, height, 1)));
+            // media_decoder.start();
         }
     });
 
@@ -109,6 +109,29 @@ fn main() {
                 }
                 _ => (),
             }
+        }
+        Event::WindowEvent {
+            window_id: _,
+            event:
+                WindowEvent::CursorMoved {
+                    position,
+                    device_id,
+                    modifiers,
+                },
+        } => {
+            ui_node.on_mouse_move(position);
+        }
+        Event::WindowEvent {
+            window_id: _,
+            event:
+                WindowEvent::MouseInput {
+                    state,
+                    device_id,
+                    modifiers,
+                    button,
+                },
+        } => {
+            ui_node.on_mouse_input((button, state));
         }
         Event::MainEventsCleared => {
             window.request_redraw();
