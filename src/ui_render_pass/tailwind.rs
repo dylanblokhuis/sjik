@@ -22,13 +22,21 @@ impl Tailwind {
         let mut colors = Colors::new();
         colors.insert(
             "red",
-            vec![("100", [254, 242, 242, 255]), ("200", [254, 226, 226, 255])]
-                .into_iter()
-                .collect(),
+            vec![
+                ("100", [254, 242, 242, 255]),
+                ("200", [254, 226, 226, 255]),
+                ("500", [244, 63, 94, 255]),
+            ]
+            .into_iter()
+            .collect(),
         );
         colors.insert(
             "blue",
             vec![("500", [59, 130, 246, 255])].into_iter().collect(),
+        );
+        colors.insert(
+            "green",
+            vec![("500", [34, 197, 94, 255])].into_iter().collect(),
         );
         colors.insert(
             "green",

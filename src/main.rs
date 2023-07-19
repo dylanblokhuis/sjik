@@ -5,6 +5,7 @@ use beuk::raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use crossbeam_utils::atomic::AtomicCell;
 use decoder::MediaDecoder;
 use media_render_pass::MediaRenderPass;
+use ui_render_pass::scratch::{div, generate_layout};
 use ui_render_pass::UiRenderNode;
 use winit::event::{ElementState, VirtualKeyCode};
 use winit::{
@@ -33,7 +34,7 @@ fn main() {
         RenderContextDescriptor {
             display_handle: window.raw_display_handle(),
             window_handle: window.raw_window_handle(),
-            present_mode: PresentModeKHR::default(),
+            present_mode: PresentModeKHR::FIFO,
         },
     )));
 
@@ -85,66 +86,78 @@ fn main() {
         }
     });
 
-    event_loop.run(move |event, _, control_flow| match event {
-        Event::WindowEvent {
-            event: WindowEvent::CloseRequested,
-            window_id,
-        } if window_id == window.id() => control_flow.set_exit(),
-        Event::WindowEvent {
-            event:
-                WindowEvent::KeyboardInput {
-                    device_id: _,
-                    input,
-                    is_synthetic: _,
-                },
-            ..
-        } => {
-            let Some(keycode) = input.virtual_keycode else {
-                return;
-            };
-            match keycode {
-                VirtualKeyCode::Escape => control_flow.set_exit(),
-                VirtualKeyCode::Space => {
-                    log::info!("Space pressed");
+    _ = leptos_reactive::create_scope(leptos_reactive::create_runtime(), move |cx| {
+        let yo = div("bg-red-500 p-10 flex-col").child(div("bg-blue-500 p-5"));
+        println!("{:?}", yo);
+
+        div("bg-red-200 w-200 h-200 p-35 flex-col")
+            .child(div("bg-blue-500 p-10"))
+            .child(div("bg-green-500 p-10"))
+            .child(yo);
+
+        ui_node.write_geometry(&mut ctx.write().unwrap());
+
+        event_loop.run(move |event, _, control_flow| match event {
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                window_id,
+            } if window_id == window.id() => control_flow.set_exit(),
+            Event::WindowEvent {
+                event:
+                    WindowEvent::KeyboardInput {
+                        device_id: _,
+                        input,
+                        is_synthetic: _,
+                    },
+                ..
+            } => {
+                let Some(keycode) = input.virtual_keycode else {
+                    return;
+                };
+                match keycode {
+                    VirtualKeyCode::Escape => control_flow.set_exit(),
+                    VirtualKeyCode::Space => {
+                        log::info!("Space pressed");
+                    }
+                    _ => (),
                 }
-                _ => (),
             }
-        }
-        Event::WindowEvent {
-            window_id: _,
-            event:
-                WindowEvent::CursorMoved {
-                    position,
-                    device_id,
-                    modifiers,
-                },
-        } => {
-            ui_node.on_mouse_move(position);
-        }
-        Event::WindowEvent {
-            window_id: _,
-            event:
-                WindowEvent::MouseInput {
-                    state,
-                    device_id,
-                    modifiers,
-                    button,
-                },
-        } => {
-            ui_node.on_mouse_input((button, state));
-        }
-        Event::MainEventsCleared => {
-            window.request_redraw();
-        }
-        Event::RedrawRequested(_) => {
-            let present_index = ctx.read().unwrap().acquire_present_index();
-            media_node
-                .read()
-                .unwrap()
-                .draw(&mut ctx.write().unwrap(), present_index);
-            ui_node.draw(&mut ctx.write().unwrap(), present_index);
-            ctx.write().unwrap().present_submit(present_index);
-        }
-        _ => (),
+            Event::WindowEvent {
+                window_id: _,
+                event:
+                    WindowEvent::CursorMoved {
+                        position,
+                        device_id,
+                        modifiers,
+                    },
+            } => {
+                ui_node.on_mouse_move(position);
+            }
+            Event::WindowEvent {
+                window_id: _,
+                event:
+                    WindowEvent::MouseInput {
+                        state,
+                        device_id,
+                        modifiers,
+                        button,
+                    },
+            } => {
+                ui_node.on_mouse_input((button, state));
+            }
+            Event::MainEventsCleared => {
+                window.request_redraw();
+            }
+            Event::RedrawRequested(_) => {
+                let present_index = ctx.read().unwrap().acquire_present_index();
+                media_node
+                    .read()
+                    .unwrap()
+                    .draw(&mut ctx.write().unwrap(), present_index);
+                ui_node.draw(&mut ctx.write().unwrap(), present_index);
+                ctx.write().unwrap().present_submit(present_index);
+            }
+            _ => (),
+        });
     });
 }

@@ -7,15 +7,20 @@ use beuk::{
     pipeline::{GraphicsPipelineDescriptor, PrimitiveState},
     shaders::Shader,
 };
-use el::UiVertex;
-use lyon::lyon_tessellation::VertexBuffers;
+use leptos_reactive::Scope;
+use lyon::geom::{point, Box2D};
+use lyon::lyon_tessellation::{BuffersBuilder, FillOptions, FillTessellator, VertexBuffers};
+use ui_render::UiVertex;
 use winit::dpi::PhysicalPosition;
 use winit::event::{ElementState, MouseButton};
 
-use self::el::{DivProps, UiContext, UiRenderContext};
-
-pub mod el;
+use self::scratch::{div, generate_layout, Layout};
+use self::ui_render::Custom;
+use taffy::prelude::Size;
+use taffy::{style::AvailableSpace, Taffy};
+pub mod scratch;
 pub mod tailwind;
+pub mod ui_render;
 
 pub struct UiRenderNode {
     pipeline_handle: PipelineHandle,
@@ -23,6 +28,8 @@ pub struct UiRenderNode {
     index_buffer: Option<BufferHandle>,
     last_mouse_position: Option<PhysicalPosition<f64>>,
     last_mouse_button: Option<(MouseButton, ElementState)>,
+    geometry: VertexBuffers<UiVertex, u16>,
+    fill_tess: FillTessellator,
 }
 
 impl UiRenderNode {
@@ -86,30 +93,32 @@ impl UiRenderNode {
             vertex_buffer: None,
             last_mouse_position: None,
             last_mouse_button: None,
+            fill_tess: FillTessellator::new(),
+            geometry: VertexBuffers::new(),
         }
     }
 
-    fn update_buffers(&mut self, ctx: &mut RenderContext, geometry: &VertexBuffers<UiVertex, u16>) {
+    fn update_buffers(&mut self, ctx: &mut RenderContext) {
         if let Some(vertex_buffer) = self.vertex_buffer {
             let buffer = ctx.buffer_manager.get_buffer_mut(vertex_buffer);
-            buffer.copy_from_slice(&geometry.vertices, 0);
+            buffer.copy_from_slice(&self.geometry.vertices, 0);
         }
 
         if let Some(index_buffer) = self.index_buffer {
             let buffer = ctx.buffer_manager.get_buffer_mut(index_buffer);
-            buffer.copy_from_slice(&geometry.indices, 0);
+            buffer.copy_from_slice(&self.geometry.indices, 0);
         }
 
         let vertex_buffer = ctx.buffer_manager.create_buffer_with_data(
             "vertices",
-            bytemuck::cast_slice(&geometry.vertices),
+            bytemuck::cast_slice(&self.geometry.vertices),
             BufferUsageFlags::VERTEX_BUFFER,
             MemoryLocation::CpuToGpu,
         );
 
         let index_buffer = ctx.buffer_manager.create_buffer_with_data(
             "indices",
-            bytemuck::cast_slice(&geometry.indices),
+            bytemuck::cast_slice(&self.geometry.indices),
             BufferUsageFlags::INDEX_BUFFER,
             MemoryLocation::CpuToGpu,
         );
@@ -126,35 +135,112 @@ impl UiRenderNode {
         self.last_mouse_button = Some(button);
     }
 
-    pub fn draw(&mut self, ctx: &mut RenderContext, present_index: u32) {
-        let mut ui = UiContext::default();
-        ui.div(
-            "flex-col w-full h-full justify-start items-start bg-transparent p-15",
-            DivProps::default().on_click(|| {}),
-            |mut ui| {
-                ui.div("bg-green-500 p-30", DivProps::default(), |mut ui| {
-                    ui.div("bg-blue-500 p-15", DivProps::default(), |x| x)
-                });
-                ui.div("bg-green-500 w-100 h-100", DivProps::default(), |x| x);
-                ui.div(
-                    "bg-blue-500 w-100 h-100 rounded-15",
-                    DivProps::default(),
-                    |c| c,
+    pub fn write_geometry(&mut self, ctx: &mut RenderContext) {
+        let mut layout = generate_layout();
+        let first_node = layout.root_node;
+
+        layout
+            .taffy
+            .compute_layout(
+                first_node,
+                Size {
+                    width: AvailableSpace::Definite(
+                        ctx.render_swapchain.surface_resolution.width as f32 / 100.0,
+                    ),
+                    height: AvailableSpace::Definite(
+                        ctx.render_swapchain.surface_resolution.height as f32 / 100.0,
+                    ),
+                },
+            )
+            .unwrap();
+
+        layout.couples.sort_by(|(node_a, _, _), (node_b, _, _)| {
+            let layout_a = layout.taffy.layout(*node_a).unwrap();
+            let layout_b = layout.taffy.layout(*node_b).unwrap();
+
+            // sort by x and y
+
+            layout_a
+                .location
+                .y
+                .partial_cmp(&layout_b.location.y)
+                .unwrap()
+                .then(
+                    layout_a
+                        .location
+                        .x
+                        .partial_cmp(&layout_b.location.x)
+                        .unwrap(),
                 )
-            },
-        );
 
-        let render_context = UiRenderContext::new(
-            (
-                ctx.render_swapchain.surface_resolution.width,
-                ctx.render_swapchain.surface_resolution.height,
-            ),
-            self.last_mouse_position,
-            self.last_mouse_button,
-        );
-        let geometry = ui.finish(render_context);
-        self.update_buffers(ctx, &geometry);
+            // layout_a
+            //     .location
+            //     .x
+            //     .partial_cmp(&layout_b.location.x)
+            //     .unwrap()
+        });
 
+        for (taffy_node, node, tw) in layout.couples.iter() {
+            let layout = layout.taffy.layout(*taffy_node).unwrap();
+
+            println!(
+                "layout order {:?} {:?} {:?}",
+                layout.order, node, tw.visual_style
+            );
+
+            // let min_x = layout.location.x;
+            // let max_x = min_x + layout.size.width;
+            // let min_y = layout.location.y;
+            // let max_y = min_y + layout.size.height;
+
+            // check if click is inside this node
+            // if let Some(mouse_position) = render_context.mouse_position {
+            //     if mouse_position.x >= min_x.into()
+            //         && mouse_position.x <= max_x.into()
+            //         && mouse_position.y >= min_y.into()
+            //         && mouse_position.y <= max_y.into()
+            //     {
+            //         let node = self.nodes.get_mut(&node_id).unwrap();
+            //         let mut node = node.node.borrow_mut();
+            //         node.on_hover();
+            //         if let Some((mouse_button, state)) = render_context.mouse_button {
+            //             if mouse_button == MouseButton::Left && state == ElementState::Released {
+            //                 node.on_click();
+            //             }
+            //         }
+            //     }
+            // }
+
+            // map everything to top left corner in vulkan coords (-1, -1)
+            let min_x = 2.0
+                * (layout.location.x / ctx.render_swapchain.surface_resolution.width as f32)
+                - 1.0;
+            let max_x = min_x
+                + 2.0 * (layout.size.width / ctx.render_swapchain.surface_resolution.width as f32);
+            let min_y = 2.0
+                * (layout.location.y / ctx.render_swapchain.surface_resolution.height as f32)
+                - 1.0;
+            let max_y = min_y
+                + 2.0
+                    * (layout.size.height / ctx.render_swapchain.surface_resolution.height as f32);
+
+            self.fill_tess
+                .tessellate_rectangle(
+                    &Box2D::new(point(min_x, min_y), point(max_x, max_y)),
+                    &FillOptions::default(),
+                    &mut BuffersBuilder::new(
+                        &mut self.geometry,
+                        Custom {
+                            color: tw.visual_style.background_color,
+                        },
+                    ),
+                )
+                .unwrap();
+        }
+        self.update_buffers(ctx);
+    }
+
+    pub fn draw(&mut self, ctx: &mut RenderContext, present_index: u32) {
         ctx.present_record(
             present_index,
             |ctx, command_buffer, present_index: u32| unsafe {
@@ -195,7 +281,7 @@ impl UiRenderNode {
                 );
                 ctx.device.cmd_draw_indexed(
                     command_buffer,
-                    geometry.indices.len() as u32,
+                    self.geometry.indices.len() as u32,
                     1,
                     0,
                     0,
