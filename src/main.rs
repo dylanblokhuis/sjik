@@ -5,9 +5,9 @@ use beuk::raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use crossbeam_utils::atomic::AtomicCell;
 
 use media_render_pass::MediaRenderPass;
-use ui_render_pass::scratch::{div};
+use ui_render_pass::scratch::div;
 use ui_render_pass::UiRenderNode;
-use winit::event::{VirtualKeyCode};
+use winit::event::VirtualKeyCode;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::EventLoop,
@@ -87,13 +87,10 @@ fn main() {
     });
 
     _ = leptos_reactive::create_scope(leptos_reactive::create_runtime(), move |_cx| {
-        let yo = div("bg-red-500 p-10 flex-col").child(div("bg-blue-500 p-5"));
-        println!("{:?}", yo);
-
         div("bg-red-200 w-200 h-200 p-35 flex-col")
             .child(div("bg-blue-500 p-10"))
-            .child(div("bg-green-500 p-10"))
-            .child(yo);
+            .child(div("bg-red-500 p-10 flex-col").child(div("bg-red-100 p-5")))
+            .child(div("bg-green-500 p-10"));
 
         ui_node.write_geometry(&mut ctx.write().unwrap());
 
@@ -154,7 +151,7 @@ fn main() {
                     .read()
                     .unwrap()
                     .draw(&mut ctx.write().unwrap(), present_index);
-                ui_node.draw(&mut ctx.write().unwrap(), present_index);
+                ui_node.draw(&ctx.read().unwrap(), present_index);
                 ctx.write().unwrap().present_submit(present_index);
             }
             _ => (),

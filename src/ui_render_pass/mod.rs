@@ -10,17 +10,37 @@ use beuk::{
 
 use lyon::geom::{point, Box2D};
 use lyon::lyon_tessellation::{BuffersBuilder, FillOptions, FillTessellator, VertexBuffers};
-use ui_render::UiVertex;
 use winit::dpi::PhysicalPosition;
 use winit::event::{ElementState, MouseButton};
 
-use self::scratch::{generate_layout};
-use self::ui_render::Custom;
+use self::scratch::{EntityId, ENTITIES};
 use taffy::prelude::Size;
-use taffy::{style::AvailableSpace};
+use taffy::style::AvailableSpace;
 pub mod scratch;
 pub mod tailwind;
-pub mod ui_render;
+
+use lyon::lyon_tessellation::{FillVertex, FillVertexConstructor};
+
+#[repr(C, align(16))]
+#[derive(Clone, Debug, Copy, Default, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct UiVertex {
+    pub point: [f32; 2],
+    pub color: [f32; 4],
+    pub _padding: [f32; 2],
+}
+
+pub struct Custom {
+    pub color: [f32; 4],
+}
+impl FillVertexConstructor<UiVertex> for Custom {
+    fn new_vertex(&mut self, vertex: FillVertex) -> UiVertex {
+        UiVertex {
+            point: vertex.position().to_array(),
+            color: self.color,
+            ..Default::default()
+        }
+    }
+}
 
 pub struct UiRenderNode {
     pipeline_handle: PipelineHandle,
@@ -136,82 +156,33 @@ impl UiRenderNode {
     }
 
     pub fn write_geometry(&mut self, ctx: &mut RenderContext) {
-        let mut layout = generate_layout();
-        let first_node = layout.root_node;
+        let root_node = {
+            let entities = ENTITIES.read().unwrap();
+            entities.views.first_key_value().unwrap().0 .0
+        };
 
-        layout
-            .taffy
-            .compute_layout(
-                first_node,
-                Size {
-                    width: AvailableSpace::Definite(
-                        ctx.render_swapchain.surface_resolution.width as f32 / 100.0,
-                    ),
-                    height: AvailableSpace::Definite(
-                        ctx.render_swapchain.surface_resolution.height as f32 / 100.0,
-                    ),
-                },
-            )
-            .unwrap();
-
-        layout.couples.sort_by(|(node_a, _, _), (node_b, _, _)| {
-            let layout_a = layout.taffy.layout(*node_a).unwrap();
-            let layout_b = layout.taffy.layout(*node_b).unwrap();
-
-            // sort by x and y
-
-            layout_a
-                .location
-                .y
-                .partial_cmp(&layout_b.location.y)
-                .unwrap()
-                .then(
-                    layout_a
-                        .location
-                        .x
-                        .partial_cmp(&layout_b.location.x)
-                        .unwrap(),
+        {
+            let mut entities = ENTITIES.write().unwrap();
+            entities
+                .taffy
+                .compute_layout(
+                    root_node,
+                    Size {
+                        width: AvailableSpace::Definite(
+                            ctx.render_swapchain.surface_resolution.width as f32 / 100.0,
+                        ),
+                        height: AvailableSpace::Definite(
+                            ctx.render_swapchain.surface_resolution.height as f32 / 100.0,
+                        ),
+                    },
                 )
+                .unwrap();
+        }
 
-            // layout_a
-            //     .location
-            //     .x
-            //     .partial_cmp(&layout_b.location.x)
-            //     .unwrap()
-        });
-
-        for (taffy_node, node, tw) in layout.couples.iter() {
-            let layout = layout.taffy.layout(*taffy_node).unwrap();
-
-            println!(
-                "layout order {:?} {:?} {:?}",
-                layout.order, node, tw.visual_style
-            );
-
-            // let min_x = layout.location.x;
-            // let max_x = min_x + layout.size.width;
-            // let min_y = layout.location.y;
-            // let max_y = min_y + layout.size.height;
-
-            // check if click is inside this node
-            // if let Some(mouse_position) = render_context.mouse_position {
-            //     if mouse_position.x >= min_x.into()
-            //         && mouse_position.x <= max_x.into()
-            //         && mouse_position.y >= min_y.into()
-            //         && mouse_position.y <= max_y.into()
-            //     {
-            //         let node = self.nodes.get_mut(&node_id).unwrap();
-            //         let mut node = node.node.borrow_mut();
-            //         node.on_hover();
-            //         if let Some((mouse_button, state)) = render_context.mouse_button {
-            //             if mouse_button == MouseButton::Left && state == ElementState::Released {
-            //                 node.on_click();
-            //             }
-            //         }
-            //     }
-            // }
-
-            // map everything to top left corner in vulkan coords (-1, -1)
+        fn recursive_tess(s: &mut UiRenderNode, ctx: &RenderContext, node: taffy::node::Node) {
+            let entities = ENTITIES.read().unwrap();
+            let layout = entities.taffy.layout(node).unwrap();
+            let tw = entities.views.get(&EntityId(node)).unwrap().tw.clone();
             let min_x = 2.0
                 * (layout.location.x / ctx.render_swapchain.surface_resolution.width as f32)
                 - 1.0;
@@ -224,23 +195,31 @@ impl UiRenderNode {
                 + 2.0
                     * (layout.size.height / ctx.render_swapchain.surface_resolution.height as f32);
 
-            self.fill_tess
+            s.fill_tess
                 .tessellate_rectangle(
                     &Box2D::new(point(min_x, min_y), point(max_x, max_y)),
                     &FillOptions::default(),
                     &mut BuffersBuilder::new(
-                        &mut self.geometry,
+                        &mut s.geometry,
                         Custom {
                             color: tw.visual_style.background_color,
                         },
                     ),
                 )
                 .unwrap();
+
+            let children = entities.taffy.children(node).unwrap();
+            for item in children.iter() {
+                recursive_tess(s, ctx, *item);
+            }
         }
+
+        recursive_tess(self, ctx, root_node);
+
         self.update_buffers(ctx);
     }
 
-    pub fn draw(&mut self, ctx: &mut RenderContext, present_index: u32) {
+    pub fn draw(&mut self, ctx: &RenderContext, present_index: u32) {
         ctx.present_record(
             present_index,
             |ctx, command_buffer, present_index: u32| unsafe {
