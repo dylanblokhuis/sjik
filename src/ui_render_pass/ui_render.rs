@@ -1,15 +1,9 @@
-use winit::{
-    dpi::PhysicalPosition,
-    event::{ElementState, MouseButton},
-};
+
 
 use lyon::{
-    geom::{point, Box2D},
     lyon_tessellation::{
-        BuffersBuilder, FillOptions, FillTessellator, FillVertex, FillVertexConstructor,
-        VertexBuffers,
+        FillVertex, FillVertexConstructor,
     },
-    path::builder::BorderRadii,
 };
 
 #[repr(C, align(16))]

@@ -7,17 +7,17 @@ use beuk::{
     pipeline::{GraphicsPipelineDescriptor, PrimitiveState},
     shaders::Shader,
 };
-use leptos_reactive::Scope;
+
 use lyon::geom::{point, Box2D};
 use lyon::lyon_tessellation::{BuffersBuilder, FillOptions, FillTessellator, VertexBuffers};
 use ui_render::UiVertex;
 use winit::dpi::PhysicalPosition;
 use winit::event::{ElementState, MouseButton};
 
-use self::scratch::{div, generate_layout, Layout};
+use self::scratch::{generate_layout};
 use self::ui_render::Custom;
 use taffy::prelude::Size;
-use taffy::{style::AvailableSpace, Taffy};
+use taffy::{style::AvailableSpace};
 pub mod scratch;
 pub mod tailwind;
 pub mod ui_render;

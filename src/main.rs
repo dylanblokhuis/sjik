@@ -3,11 +3,11 @@ use beuk::ctx::RenderContextDescriptor;
 use beuk::raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 
 use crossbeam_utils::atomic::AtomicCell;
-use decoder::MediaDecoder;
+
 use media_render_pass::MediaRenderPass;
-use ui_render_pass::scratch::{div, generate_layout};
+use ui_render_pass::scratch::{div};
 use ui_render_pass::UiRenderNode;
-use winit::event::{ElementState, VirtualKeyCode};
+use winit::event::{VirtualKeyCode};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::EventLoop,
@@ -39,10 +39,10 @@ fn main() {
     )));
 
     let video_size: Arc<AtomicCell<Option<(u32, u32, u32)>>> = Arc::new(AtomicCell::new(None));
-    let (tx, rx) = crossbeam_channel::unbounded::<Vec<u8>>();
+    let (_tx, rx) = crossbeam_channel::unbounded::<Vec<u8>>();
 
     std::thread::spawn({
-        let video_size = video_size.clone();
+        let _video_size = video_size.clone();
 
         move || {
             // let mut media_decoder = MediaDecoder::new("http://192.168.178.49:32400/library/parts/1717/1689522231/file.mkv?download=1&X-Plex-Token=J3j74Py7w49SsXrq3ThS", move|frame| {
@@ -86,7 +86,7 @@ fn main() {
         }
     });
 
-    _ = leptos_reactive::create_scope(leptos_reactive::create_runtime(), move |cx| {
+    _ = leptos_reactive::create_scope(leptos_reactive::create_runtime(), move |_cx| {
         let yo = div("bg-red-500 p-10 flex-col").child(div("bg-blue-500 p-5"));
         println!("{:?}", yo);
 
@@ -127,8 +127,8 @@ fn main() {
                 event:
                     WindowEvent::CursorMoved {
                         position,
-                        device_id,
-                        modifiers,
+                        device_id: _,
+                        modifiers: _,
                     },
             } => {
                 ui_node.on_mouse_move(position);
@@ -138,8 +138,8 @@ fn main() {
                 event:
                     WindowEvent::MouseInput {
                         state,
-                        device_id,
-                        modifiers,
+                        device_id: _,
+                        modifiers: _,
                         button,
                     },
             } => {
