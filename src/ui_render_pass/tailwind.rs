@@ -127,8 +127,13 @@ impl Tailwind {
     fn handle_color(&self, class: &str, colors: &Colors) -> [f32; 4] {
         // check check color then variant
         let color_and_variant: Vec<&str> = class.split('-').collect();
-        if color_and_variant.len() != 2 && color_and_variant[0] == "transparent" {
-            return [0.0, 0.0, 0.0, 0.0];
+        if color_and_variant.len() != 2 {
+            return match color_and_variant[0] {
+                "transparent" => [0.0, 0.0, 0.0, 0.0],
+                "white" => [1.0, 1.0, 1.0, 1.0],
+                "black" => [0.0, 0.0, 0.0, 1.0],
+                _ => panic!("Unknown color {class}"),
+            };
         }
         let color = color_and_variant[0];
         let variant = color_and_variant[1];

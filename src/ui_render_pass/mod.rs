@@ -11,7 +11,7 @@ use beuk::{
 use lyon::geom::{point, Box2D};
 use lyon::lyon_tessellation::{BuffersBuilder, FillOptions, FillTessellator, VertexBuffers};
 use winit::dpi::PhysicalPosition;
-use winit::event::{ElementState, MouseButton};
+use winit::event::{ElementState, MouseButton, WindowEvent};
 
 use self::scratch::{EntityId, ENTITIES};
 use taffy::prelude::Size;
@@ -46,10 +46,9 @@ pub struct UiRenderNode {
     pipeline_handle: PipelineHandle,
     vertex_buffer: Option<BufferHandle>,
     index_buffer: Option<BufferHandle>,
-    last_mouse_position: Option<PhysicalPosition<f64>>,
-    last_mouse_button: Option<(MouseButton, ElementState)>,
-    geometry: VertexBuffers<UiVertex, u16>,
+    pub geometry: VertexBuffers<UiVertex, u16>,
     fill_tess: FillTessellator,
+    last_mouse_position: PhysicalPosition<f64>,
 }
 
 impl UiRenderNode {
@@ -111,10 +110,9 @@ impl UiRenderNode {
             pipeline_handle,
             index_buffer: None,
             vertex_buffer: None,
-            last_mouse_position: None,
-            last_mouse_button: None,
             fill_tess: FillTessellator::new(),
             geometry: VertexBuffers::new(),
+            last_mouse_position: PhysicalPosition::new(0.0, 0.0),
         }
     }
 
@@ -147,15 +145,91 @@ impl UiRenderNode {
         self.index_buffer = Some(index_buffer);
     }
 
-    pub fn on_mouse_move(&mut self, position: PhysicalPosition<f64>) {
-        self.last_mouse_position = Some(position);
+    pub fn handle_events(&mut self, event: WindowEvent) {
+        match event {
+            WindowEvent::CursorMoved { position, .. } => {
+                self.bubble_on_hover_events(position);
+                self.last_mouse_position = position;
+            }
+            WindowEvent::Touch(touch) => {
+                self.bubble_on_click_events(touch.location);
+            }
+            WindowEvent::MouseInput { button, state, .. } => {
+                if button != MouseButton::Left || state != ElementState::Pressed {
+                    return;
+                }
+                self.bubble_on_click_events(self.last_mouse_position);
+            }
+            _ => {}
+        }
     }
 
-    pub fn on_mouse_input(&mut self, button: (MouseButton, ElementState)) {
-        self.last_mouse_button = Some(button);
+    pub fn bubble_on_hover_events(&self, position: PhysicalPosition<f64>) {
+        let Some(maybe_element) = self.find_element_on_point(position.x as f32, position.y as f32)
+        else {
+            return;
+        };
+        let entities = ENTITIES.read().unwrap();
+        let element = entities.views.get(&EntityId(maybe_element)).unwrap();
+        let Some(on_hover) = element.on_hover.as_ref() else {
+            return;
+        };
+        on_hover();
+    }
+
+    pub fn bubble_on_click_events(&self, position: PhysicalPosition<f64>) {
+        let Some(maybe_element) = self.find_element_on_point(position.x as f32, position.y as f32)
+        else {
+            return;
+        };
+        let entities = ENTITIES.read().unwrap();
+        let element = entities.views.get(&EntityId(maybe_element)).unwrap();
+        let Some(on_click) = element.on_click.as_ref() else {
+            return;
+        };
+        on_click();
+    }
+
+    fn find_element_on_point(&self, x: f32, y: f32) -> Option<taffy::node::Node> {
+        let entities = ENTITIES.read().unwrap();
+        self.find_element_on_point_recursive(x, y, entities.views.first_key_value().unwrap().0 .0)
+    }
+
+    fn find_element_on_point_recursive(
+        &self,
+        x: f32,
+        y: f32,
+        node: taffy::node::Node,
+    ) -> Option<taffy::node::Node> {
+        let entities = ENTITIES.read().unwrap();
+        let layout = entities.taffy.layout(node).unwrap();
+
+        // check if point is inside the current node
+        if x >= layout.location.x
+            && x <= layout.location.x + layout.size.width
+            && y >= layout.location.y
+            && y <= layout.location.y + layout.size.height
+        {
+            // if point is inside, check children
+            let children = entities.taffy.children(node).unwrap();
+            for child in children.iter() {
+                if let Some(found) = self.find_element_on_point_recursive(x, y, *child) {
+                    return Some(found); // if a child contains the point, return it
+                }
+            }
+
+            // if no child contains the point, the current node does
+            return Some(node);
+        }
+
+        // point is not inside the current node
+        None
     }
 
     pub fn write_geometry(&mut self, ctx: &mut RenderContext) {
+        self.geometry = VertexBuffers::new();
+        self.fill_tess = FillTessellator::new();
+
         let root_node = {
             let entities = ENTITIES.read().unwrap();
             entities.views.first_key_value().unwrap().0 .0
@@ -163,6 +237,7 @@ impl UiRenderNode {
 
         {
             let mut entities = ENTITIES.write().unwrap();
+
             entities
                 .taffy
                 .compute_layout(
@@ -179,18 +254,26 @@ impl UiRenderNode {
                 .unwrap();
         }
 
-        fn recursive_tess(s: &mut UiRenderNode, ctx: &RenderContext, node: taffy::node::Node) {
+        fn recursive_tess(
+            s: &mut UiRenderNode,
+            ctx: &RenderContext,
+            node: taffy::node::Node,
+            parent_location: &taffy::geometry::Point<f32>,
+        ) {
             let entities = ENTITIES.read().unwrap();
             let layout = entities.taffy.layout(node).unwrap();
-            let tw = entities.views.get(&EntityId(node)).unwrap().tw.clone();
-            let min_x = 2.0
-                * (layout.location.x / ctx.render_swapchain.surface_resolution.width as f32)
-                - 1.0;
+            let tw: tailwind::Tailwind = entities.views.get(&EntityId(node)).unwrap().tw.clone();
+            let location = taffy::geometry::Point {
+                x: parent_location.x + layout.location.x,
+                y: parent_location.y + layout.location.y,
+            };
+
+            let min_x =
+                2.0 * (location.x / ctx.render_swapchain.surface_resolution.width as f32) - 1.0;
             let max_x = min_x
                 + 2.0 * (layout.size.width / ctx.render_swapchain.surface_resolution.width as f32);
-            let min_y = 2.0
-                * (layout.location.y / ctx.render_swapchain.surface_resolution.height as f32)
-                - 1.0;
+            let min_y =
+                2.0 * (location.y / ctx.render_swapchain.surface_resolution.height as f32) - 1.0;
             let max_y = min_y
                 + 2.0
                     * (layout.size.height / ctx.render_swapchain.surface_resolution.height as f32);
@@ -210,11 +293,11 @@ impl UiRenderNode {
 
             let children = entities.taffy.children(node).unwrap();
             for item in children.iter() {
-                recursive_tess(s, ctx, *item);
+                recursive_tess(s, ctx, *item, &location);
             }
         }
 
-        recursive_tess(self, ctx, root_node);
+        recursive_tess(self, ctx, root_node, &taffy::geometry::Point::ZERO);
 
         self.update_buffers(ctx);
     }
@@ -269,7 +352,5 @@ impl UiRenderNode {
                 ctx.end_rendering(command_buffer);
             },
         );
-
-        self.last_mouse_button = None;
     }
 }

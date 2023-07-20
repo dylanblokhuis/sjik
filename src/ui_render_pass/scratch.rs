@@ -19,10 +19,11 @@ impl EntityId {
 
 pub struct Element {
     pub tw: Tailwind,
-    on_click: Option<Arc<dyn Fn() + Send + Sync>>,
-    on_hover: Option<Arc<dyn Fn() + Send + Sync>>,
+    pub on_click: Option<Arc<dyn Fn() + Send + Sync>>,
+    pub on_hover: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
+#[derive(Default)]
 pub struct Entities {
     pub views: BTreeMap<EntityId, Element>,
     // pub parents: BTreeMap<EntityId, EntityId>,
@@ -37,7 +38,6 @@ impl Entities {
     }
 
     pub fn add_child(&mut self, child: EntityId, parent: EntityId) {
-        // println!("ADD CHILD - parent: {}  child: {}", parent.0, child.0);
         self.taffy.add_child(parent.0, child.0).unwrap();
     }
 }
@@ -48,18 +48,6 @@ pub static ENTITIES: once_cell::sync::Lazy<RwLock<Entities>> = once_cell::sync::
         taffy: Taffy::new(),
     })
 });
-
-pub fn div(class: &'static str) -> EntityId {
-    let tw = Tailwind::new(&class.to_string());
-    let id = ENTITIES.write().unwrap().add(Element {
-        tw,
-        on_click: None,
-        on_hover: None,
-    });
-    println!("{:?} - {:?}", id, class);
-
-    id
-}
 
 #[derive(Default)]
 pub struct Events {
@@ -84,7 +72,7 @@ impl Events {
     }
 }
 
-pub fn btn(class: &'static str, events: Events) -> EntityId {
+pub fn btn(class: &str, events: Events) -> EntityId {
     let tw = Tailwind::new(&class.to_string());
     let id = ENTITIES.write().unwrap().add(Element {
         tw,
@@ -93,4 +81,12 @@ pub fn btn(class: &'static str, events: Events) -> EntityId {
     });
 
     id
+}
+
+pub fn div(class: &str) -> EntityId {
+    ENTITIES.write().unwrap().add(Element {
+        tw: Tailwind::new(&class.to_string()),
+        on_click: None,
+        on_hover: None,
+    })
 }

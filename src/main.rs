@@ -5,9 +5,8 @@ use beuk::raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use crossbeam_utils::atomic::AtomicCell;
 
 use media_render_pass::MediaRenderPass;
-use ui_render_pass::scratch::div;
+use ui_render_pass::scratch::ENTITIES;
 use ui_render_pass::UiRenderNode;
-use winit::event::VirtualKeyCode;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::EventLoop,
@@ -18,6 +17,7 @@ use std::sync::{Arc, RwLock};
 
 mod decoder;
 mod media_render_pass;
+mod ui;
 mod ui_render_pass;
 
 fn main() {
@@ -86,61 +86,22 @@ fn main() {
         }
     });
 
-    _ = leptos_reactive::create_scope(leptos_reactive::create_runtime(), move |_cx| {
-        div("bg-red-200 w-200 h-200 p-35 flex-col")
-            .child(div("bg-blue-500 p-10"))
-            .child(div("bg-red-500 p-10 flex-col").child(div("bg-red-100 p-5")))
-            .child(div("bg-green-500 p-10"));
-
-        ui_node.write_geometry(&mut ctx.write().unwrap());
+    leptos_reactive::create_scope(leptos_reactive::create_runtime(), move |cx| {
+        leptos_reactive::SpecialNonReactiveZone::enter();
+        let (button_width, set_button_width) = leptos_reactive::create_signal(cx, 40);
 
         event_loop.run(move |event, _, control_flow| match event {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 window_id,
             } if window_id == window.id() => control_flow.set_exit(),
-            Event::WindowEvent {
-                event:
-                    WindowEvent::KeyboardInput {
-                        device_id: _,
-                        input,
-                        is_synthetic: _,
-                    },
-                ..
-            } => {
-                let Some(keycode) = input.virtual_keycode else {
-                    return;
-                };
-                match keycode {
-                    VirtualKeyCode::Escape => control_flow.set_exit(),
-                    VirtualKeyCode::Space => {
-                        log::info!("Space pressed");
-                    }
-                    _ => (),
-                }
-            }
-            Event::WindowEvent {
-                window_id: _,
-                event:
-                    WindowEvent::CursorMoved {
-                        position,
-                        device_id: _,
-                        modifiers: _,
-                    },
-            } => {
-                ui_node.on_mouse_move(position);
-            }
-            Event::WindowEvent {
-                window_id: _,
-                event:
-                    WindowEvent::MouseInput {
-                        state,
-                        device_id: _,
-                        modifiers: _,
-                        button,
-                    },
-            } => {
-                ui_node.on_mouse_input((button, state));
+
+            Event::WindowEvent { event, .. } => {
+                *ENTITIES.write().unwrap() = Default::default();
+                ui::app(cx, button_width, set_button_width);
+                ui_node.write_geometry(&mut ctx.write().unwrap());
+
+                ui_node.handle_events(event);
             }
             Event::MainEventsCleared => {
                 window.request_redraw();
@@ -156,5 +117,6 @@ fn main() {
             }
             _ => (),
         });
-    });
+    })
+    .dispose();
 }
