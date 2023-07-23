@@ -1,0 +1,30 @@
+[package]
+name = "dioxus_beuk"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+dioxus = { git = "https://github.com/DioxusLabs/dioxus/" }
+dioxus-native-core = { git = "https://github.com/DioxusLabs/dioxus/", features = ["layout-attributes", "dioxus"] }
+dioxus-native-core-macro = { git = "https://github.com/DioxusLabs/dioxus/" }
+taffy = "0.3.12"
+tokio = { version = "1.25.0", features = ["sync", "rt", "macros"] }
+lightningcss = { git = "https://github.com/parcel-bundler/lightningcss" }
+cssparser = "0.29.6"
+tao = { version = "0.21.0", features = ["serde"] }
+raw-window-handle = "0.5.0"
+serde_json = "1.0.91"
+serde = { version = "1.0.152", features = ["derive"] }
+keyboard-types = "0.6.2"
+rustc-hash = "1.1.0"
+shipyard = {  version = "0.6.2", features = ["proc", "std"], default-features = false }
+once_cell = "1.17.1"
+image = "0.24.5"
+quadtree_rs = "0.1.2"
+smallvec = "1.10.0"
+beuk = { git = "https://github.com/dylanblokhuis/beuk", rev = "aa7b0edc6dce282906766645af4206bddfc84768" }
+peniko = { git = "https://github.com/linebender/peniko" }
+bytemuck = { version = "1.13.1", features = ["derive"] }
+epaint = { version = "0.22.0", features = ["bytemuck"] }
