@@ -4,7 +4,7 @@ use beuk::raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 
 use crossbeam_utils::atomic::AtomicCell;
 
-use decoder::MediaDecoder;
+use decoder::{FrameQueue, MediaDecoder};
 use dioxus_beuk::{DioxusApp, Redraw};
 use media_render_pass::MediaRenderPass;
 use present_render_pass::PresentRenderPass;
@@ -15,12 +15,19 @@ use tao::{
     window::WindowBuilder,
 };
 
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 mod decoder;
 mod media_render_pass;
 mod present_render_pass;
 mod ui;
+
+#[derive(Clone)]
+pub struct CurrentVideo {
+    pub width: u32,
+    pub height: u32,
+    pub queue: FrameQueue,
+}
 
 fn main() {
     std::env::set_var("RUST_LOG", "info");
@@ -33,66 +40,36 @@ fn main() {
         .build(&event_loop)
         .unwrap();
 
-    let ctx = std::sync::Arc::new(std::sync::RwLock::new(beuk::ctx::RenderContext::new(
-        RenderContextDescriptor {
-            display_handle: window.raw_display_handle(),
-            window_handle: window.raw_window_handle(),
-            present_mode: PresentModeKHR::FIFO,
-        },
-    )));
+    let mut ctx = beuk::ctx::RenderContext::new(RenderContextDescriptor {
+        display_handle: window.raw_display_handle(),
+        window_handle: window.raw_window_handle(),
+        present_mode: PresentModeKHR::FIFO,
+    });
 
-    let video_size: Arc<AtomicCell<Option<(u32, u32, u32)>>> = Arc::new(AtomicCell::new(None));
-    let (tx, rx) = crossbeam_channel::unbounded::<Vec<u8>>();
+    let current_video: Arc<RwLock<Option<CurrentVideo>>> = Arc::new(RwLock::new(None));
+    let (tx, rx) = crossbeam_channel::bounded::<Vec<u8>>(1);
 
     std::thread::spawn({
-        let video_size = video_size.clone();
+        let current_video = current_video.clone();
 
         move || {
             let mut media_decoder = MediaDecoder::new("http://192.168.178.49:32400/library/parts/1717/1689522231/file.mkv?download=1&X-Plex-Token=J3j74Py7w49SsXrq3ThS", move|frame| {
                 tx.send(frame).unwrap();
             });
             let (width, height) = media_decoder.get_video_size();
-            video_size.store(Some((width, height, 1)));
+            *current_video.write().unwrap() = Some(CurrentVideo {
+                width,
+                height,
+                queue: media_decoder.get_frame_queue(),
+            });
             media_decoder.start();
         }
     });
 
-    let media_node =
-        std::sync::Arc::new(RwLock::new(MediaRenderPass::new(&mut ctx.write().unwrap())));
-    let mut present_node = PresentRenderPass::new(&mut ctx.write().unwrap());
+    let mut media_node = MediaRenderPass::new(&mut ctx);
+    let mut present_node = PresentRenderPass::new(&mut ctx);
 
-    let mut application = DioxusApp::new(
-        ui::app,
-        &mut ctx.write().unwrap(),
-        event_loop.create_proxy(),
-    );
-
-    std::thread::spawn({
-        let video_size = video_size.clone();
-        let ctx = ctx.clone();
-        let media_node = media_node.clone();
-
-        move || loop {
-            let frame = rx.recv().unwrap();
-
-            media_node
-                .write()
-                .unwrap()
-                .setup_buffers(&mut ctx.write().unwrap(), video_size.load().unwrap());
-
-            log::debug!("Copying frame to buffer: {}", frame.len());
-            let media_node = media_node.read().unwrap();
-
-            let mut ctx = ctx.write().unwrap();
-            let buffer = ctx
-                .buffer_manager
-                .get_buffer_mut(media_node.frame_buffer.unwrap());
-            buffer.copy_from_slice(&frame, 0);
-            log::debug!("Copying frame to gpu");
-            media_node.copy_yuv420_frame_to_gpu(&ctx);
-            log::debug!("Done copying frame to gpu");
-        }
-    });
+    let mut application = DioxusApp::new(ui::app, &mut ctx, event_loop.create_proxy());
 
     event_loop.run(move |event, _, control_flow| {
         application.send_event(&event);
@@ -107,19 +84,26 @@ fn main() {
                 window.request_redraw();
             }
             tao::event::Event::RedrawRequested(_) => {
-                let present_index = ctx.read().unwrap().acquire_present_index();
-                media_node.read().unwrap().draw(&mut ctx.write().unwrap());
+                let present_index = ctx.acquire_present_index();
+
+                if rx.is_full() {
+                    if let Some(current_video) = current_video.read().unwrap().as_ref() {
+                        let frame = rx.recv().unwrap();
+                        media_node.setup_buffers(&mut ctx, current_video);
+                        media_node.draw(&mut ctx, current_video, &frame);
+                    }
+                }
+
                 if !application.clean().is_empty() {
-                    println!("Redrawing ui");
-                    application.render(&mut ctx.write().unwrap());
+                    application.render(&mut ctx);
                 }
                 present_node.combine_and_draw(
-                    &ctx.read().unwrap(),
+                    &ctx,
                     application.get_attachment_handle(),
-                    media_node.read().unwrap().attachment,
+                    media_node.attachment,
                     present_index,
                 );
-                ctx.write().unwrap().present_submit(present_index);
+                ctx.present_submit(present_index);
             }
             tao::event::Event::UserEvent(_redraw) => {
                 window.request_redraw();

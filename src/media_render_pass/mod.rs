@@ -11,6 +11,8 @@ use beuk::{
     shaders::Shader,
 };
 
+use crate::CurrentVideo;
+
 #[repr(C, align(16))]
 #[derive(Clone, Debug, Copy, Default, bytemuck::Pod, bytemuck::Zeroable)]
 struct Vertex {
@@ -111,11 +113,7 @@ impl MediaRenderPass {
         }
     }
 
-    pub fn setup_buffers(
-        &mut self,
-        ctx: &mut RenderContext,
-        (video_width, video_height, _bytes_per_pixel): (u32, u32, u32),
-    ) {
+    pub fn setup_buffers(&mut self, ctx: &mut RenderContext, current_video: &CurrentVideo) {
         if self.yuv.is_some() && self.frame_buffer.is_some() && self.uniform_buffer.is_some() {
             return;
         }
@@ -212,8 +210,8 @@ void main() {
                 image_type: vk::ImageType::TYPE_2D,
                 format: video_format,
                 extent: vk::Extent3D {
-                    width: video_width,
-                    height: video_height,
+                    width: current_video.width,
+                    height: current_video.height,
                     depth: 1,
                 },
                 samples: vk::SampleCountFlags::TYPE_1,
@@ -341,7 +339,7 @@ void main() {
             };
         }
 
-        let size = video_width * video_height;
+        let size = current_video.width * current_video.height;
         let fullscreen_of_yuv = size + (size / 2);
 
         log::debug!("Creating frame buffer of size {}", fullscreen_of_yuv);
@@ -578,10 +576,14 @@ void main() {
         ctx.submit(&ctx.setup_command_buffer, ctx.setup_commands_reuse_fence);
     }
 
-    pub fn draw(&self, ctx: &mut RenderContext) {
-        let Some(pipeline_handle) = self.pipeline_handle.as_ref() else {
-            return;
-        };
+    pub fn draw(&self, ctx: &mut RenderContext, current_video: &CurrentVideo, frame: &[u8]) {
+        let buffer = ctx
+            .buffer_manager
+            .get_buffer_mut(self.frame_buffer.unwrap());
+        buffer.copy_from_slice(frame, 0);
+        log::debug!("Copying frame to gpu");
+        self.copy_yuv420_frame_to_gpu(ctx);
+
         ctx.record(
             ctx.draw_command_buffer,
             Some(ctx.draw_commands_reuse_fence),

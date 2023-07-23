@@ -1,8 +1,9 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::slice;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use cpal::{traits::StreamTrait, ChannelCount, SampleRate, Stream};
+use crossbeam_queue::ArrayQueue;
 use ringbuf::{HeapConsumer, HeapProducer, HeapRb};
 use stainless_ffmpeg::prelude::FormatContext;
 use stainless_ffmpeg::prelude::*;
@@ -12,9 +13,11 @@ use stainless_ffmpeg::probe::Probe;
 // that is why the following constant has been added.
 const ONE_NANOSECOND: i64 = 1000000000;
 
+pub type FrameQueue = Arc<ArrayQueue<(i64, Vec<u8>)>>;
+
 pub struct MediaDecoder {
     audio_producer: HeapProducer<f32>,
-    video_queue: Arc<Mutex<VecDeque<(i64, Vec<u8>)>>>,
+    video_queue: FrameQueue,
     _audio_stream: Stream,
     format_context: FormatContext,
     audio_decoder: AudioDecoder,
@@ -158,36 +161,38 @@ impl MediaDecoder {
             audio_graph
         };
 
-        let video_queue = Arc::new(Mutex::new(VecDeque::with_capacity(10)));
+        let video_queue = Arc::new(ArrayQueue::new(10));
         let (audio_producer, audio_consumer) = HeapRb::<f32>::new(50 * 1024 * 1024).split();
 
-        let video_queue_clone = video_queue.clone();
-        std::thread::spawn(move || {
-            let mut prev_pts = None;
-            let mut now = std::time::Instant::now();
+        std::thread::spawn({
+            let video_queue = video_queue.clone();
+            move || {
+                let mut prev_pts = None;
+                let mut now = std::time::Instant::now();
 
-            loop {
-                // std::thread::sleep(std::time::Duration::from_millis(10));
-                // log::debug!(
-                //     "video queue size: {}",
-                //     video_queue_clone.lock().unwrap().len()
-                // );
-                if let Some((pts, frame)) = video_queue_clone.lock().unwrap().pop_back() {
-                    if let Some(prev) = prev_pts {
-                        let elapsed = now.elapsed();
-                        if pts > prev {
-                            let sleep_time = std::time::Duration::new(0, (pts - prev) as u32);
-                            if elapsed < sleep_time {
-                                log::debug!("sleeping for {:?}", sleep_time - elapsed);
-                                spin_sleep::sleep(sleep_time - elapsed);
+                loop {
+                    // std::thread::sleep(std::time::Duration::from_millis(10));
+                    // log::debug!(
+                    //     "video queue size: {}",
+                    //     video_queue_clone.lock().unwrap().len()
+                    // );
+                    if let Some((pts, frame)) = video_queue.pop() {
+                        if let Some(prev) = prev_pts {
+                            let elapsed = now.elapsed();
+                            if pts > prev {
+                                let sleep_time = std::time::Duration::new(0, (pts - prev) as u32);
+                                if elapsed < sleep_time {
+                                    log::debug!("sleeping for {:?}", sleep_time - elapsed);
+                                    spin_sleep::sleep(sleep_time - elapsed);
+                                }
                             }
                         }
+
+                        prev_pts = Some(pts);
+                        now = std::time::Instant::now();
+
+                        new_frame_callback(frame);
                     }
-
-                    prev_pts = Some(pts);
-                    now = std::time::Instant::now();
-
-                    new_frame_callback(frame);
                 }
             }
         });
@@ -210,6 +215,10 @@ impl MediaDecoder {
         }
     }
 
+    pub fn get_frame_queue(&self) -> Arc<ArrayQueue<(i64, Vec<u8>)>> {
+        self.video_queue.clone()
+    }
+
     pub fn get_video_size(&self) -> (u32, u32) {
         let width = self.video_decoder.get_width() as u32;
         let height = self.video_decoder.get_height() as u32;
@@ -218,7 +227,7 @@ impl MediaDecoder {
 
     pub fn start(&mut self) {
         loop {
-            if self.video_queue.lock().unwrap().len() >= 10 {
+            if self.video_queue.len() >= 10 {
                 std::thread::sleep(std::time::Duration::from_millis(10));
                 continue;
             }
@@ -284,10 +293,7 @@ impl MediaDecoder {
                         x => panic!("Unsupported pixel format {x}"),
                     };
                     log::debug!("color_data {:?}", color_data.len());
-                    self.video_queue
-                        .lock()
-                        .unwrap()
-                        .push_front((pts_nano, color_data));
+                    self.video_queue.push((pts_nano, color_data)).unwrap();
                 }
             }
 
