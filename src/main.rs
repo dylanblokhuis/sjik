@@ -7,6 +7,7 @@ use crossbeam_utils::atomic::AtomicCell;
 use decoder::MediaDecoder;
 use dioxus_beuk::{DioxusApp, Redraw};
 use media_render_pass::MediaRenderPass;
+use present_render_pass::PresentRenderPass;
 use tao::event_loop::ControlFlow;
 use tao::{
     event::{Event, WindowEvent},
@@ -18,9 +19,11 @@ use std::sync::{Arc, RwLock};
 
 mod decoder;
 mod media_render_pass;
+mod present_render_pass;
 mod ui;
 
 fn main() {
+    std::env::set_var("RUST_LOG", "info");
     simple_logger::SimpleLogger::new().env().init().unwrap();
     let event_loop = EventLoop::<Redraw>::with_user_event();
 
@@ -56,6 +59,7 @@ fn main() {
 
     let media_node =
         std::sync::Arc::new(RwLock::new(MediaRenderPass::new(&mut ctx.write().unwrap())));
+    let mut present_node = PresentRenderPass::new(&mut ctx.write().unwrap());
 
     let mut application = DioxusApp::new(
         ui::app,
@@ -104,13 +108,17 @@ fn main() {
             }
             tao::event::Event::RedrawRequested(_) => {
                 let present_index = ctx.read().unwrap().acquire_present_index();
-                media_node
-                    .read()
-                    .unwrap()
-                    .draw(&mut ctx.write().unwrap(), present_index);
-                // if !application.clean().is_empty() {
-                application.render(&mut ctx.write().unwrap(), present_index);
-                // }
+                media_node.read().unwrap().draw(&mut ctx.write().unwrap());
+                if !application.clean().is_empty() {
+                    println!("Redrawing ui");
+                    application.render(&mut ctx.write().unwrap());
+                }
+                present_node.combine_and_draw(
+                    &ctx.read().unwrap(),
+                    application.get_attachment_handle(),
+                    media_node.read().unwrap().attachment,
+                    present_index,
+                );
                 ctx.write().unwrap().present_submit(present_index);
             }
             tao::event::Event::UserEvent(_redraw) => {

@@ -336,7 +336,7 @@ dependencies = [
 [[package]]
 name = "beuk"
 version = "0.1.0"
-source = "git+https://github.com/dylanblokhuis/beuk?rev=aa7b0edc6dce282906766645af4206bddfc84768#aa7b0edc6dce282906766645af4206bddfc84768"
+source = "git+https://github.com/dylanblokhuis/beuk?rev=92517928827356123cb72197797497a7936fba38#92517928827356123cb72197797497a7936fba38"
 dependencies = [
  "arrayvec",
  "ash",

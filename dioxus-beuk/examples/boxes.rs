@@ -53,9 +53,9 @@ fn main() {
                 // the program to gracefully handle redraws requested by the OS.
                 let present_index = render_context.acquire_present_index();
 
-                if !application.clean().is_empty() {
-                    application.render(&mut render_context, present_index);
-                }
+                // if !application.clean().is_empty() {
+                //     application.render(&mut render_context, present_index);
+                // }
 
                 render_context.present_submit(present_index);
             }

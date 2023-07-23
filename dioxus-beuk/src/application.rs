@@ -1,5 +1,6 @@
 use beuk::ctx::RenderContext;
 
+use beuk::memory::TextureHandle;
 use dioxus::prelude::{Element, Scope, VirtualDom};
 use quadtree_rs::area::AreaBuilder;
 use quadtree_rs::Quadtree;
@@ -79,10 +80,14 @@ impl DioxusApp {
         }
     }
 
-    pub fn render(&mut self, render_context: &mut RenderContext, present_index: u32) {
+    pub fn get_attachment_handle(&self) -> TextureHandle {
+        self.renderer.attachment_handle
+    }
+
+    pub fn render(&mut self, render_context: &mut RenderContext) {
         self.renderer.shapes.clear();
         self.dom.render(&mut self.renderer);
-        self.renderer.render(render_context, present_index);
+        self.renderer.render(render_context);
         // After we render, we need to update the quadtree to reflect the new positions of the nodes
         self.update_quadtree();
     }

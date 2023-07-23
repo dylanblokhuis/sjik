@@ -31,6 +31,7 @@ pub struct MediaRenderPass {
     pub yuv: Option<TextureHandle>,
     pub frame_buffer: Option<BufferHandle>,
     pub uniform_buffer: Option<BufferHandle>,
+    pub attachment: TextureHandle,
 }
 
 impl MediaRenderPass {
@@ -74,6 +75,31 @@ impl MediaRenderPass {
             MemoryLocation::CpuToGpu,
         );
 
+        let attachment_format = ctx.render_swapchain.surface_format.format;
+        let (attachment_handle, _) = ctx.texture_manager.create_texture(
+            "media",
+            &ImageCreateInfo {
+                image_type: vk::ImageType::TYPE_2D,
+                format: attachment_format,
+                extent: vk::Extent3D {
+                    width: ctx.render_swapchain.surface_resolution.width,
+                    height: ctx.render_swapchain.surface_resolution.height,
+                    depth: 1,
+                },
+                samples: vk::SampleCountFlags::TYPE_1,
+                usage: vk::ImageUsageFlags::COLOR_ATTACHMENT
+                    | vk::ImageUsageFlags::TRANSFER_SRC
+                    | vk::ImageUsageFlags::SAMPLED,
+                mip_levels: 1,
+                array_layers: 1,
+                sharing_mode: vk::SharingMode::EXCLUSIVE,
+                ..Default::default()
+            },
+        );
+        ctx.texture_manager
+            .get_buffer_mut(attachment_handle)
+            .create_view(&ctx.device);
+
         Self {
             pipeline_handle: None,
             vertex_buffer,
@@ -81,6 +107,7 @@ impl MediaRenderPass {
             yuv: None,
             frame_buffer: None,
             uniform_buffer: None,
+            attachment: attachment_handle,
         }
     }
 
@@ -163,7 +190,10 @@ void main() {
                             stride: std::mem::size_of::<Vertex>() as u32,
                             input_rate: vk::VertexInputRate::VERTEX,
                         }]),
-                    color_attachment_formats: &[ctx.render_swapchain.surface_format.format],
+                    color_attachment_formats: &[ctx
+                        .texture_manager
+                        .get_buffer(self.attachment)
+                        .format],
                     depth_attachment_format: vk::Format::UNDEFINED,
                     viewport: ctx.render_swapchain.surface_resolution,
                     primitive: PrimitiveState {
@@ -173,6 +203,7 @@ void main() {
                     depth_stencil: Default::default(),
                     push_constant_range: None,
                     blend: Default::default(),
+                    multisample: Default::default(),
                 });
 
         let (yuv, _) = ctx.texture_manager.create_texture(
@@ -547,41 +578,52 @@ void main() {
         ctx.submit(&ctx.setup_command_buffer, ctx.setup_commands_reuse_fence);
     }
 
-    pub fn draw(&self, ctx: &mut RenderContext, present_index: u32) {
+    pub fn draw(&self, ctx: &mut RenderContext) {
         let Some(pipeline_handle) = self.pipeline_handle.as_ref() else {
             return;
         };
-        ctx.present_record(present_index, |ctx, command_buffer, present_index| unsafe {
-            let color_attachments = &[vk::RenderingAttachmentInfo::default()
-                .image_view(ctx.render_swapchain.present_image_views[present_index as usize])
-                .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                .load_op(vk::AttachmentLoadOp::CLEAR)
-                .store_op(vk::AttachmentStoreOp::STORE)
-                .clear_value(vk::ClearValue {
-                    color: vk::ClearColorValue {
-                        float32: [0.0, 0.0, 0.0, 1.0],
-                    },
-                })];
+        ctx.record(
+            ctx.draw_command_buffer,
+            Some(ctx.draw_commands_reuse_fence),
+            |ctx, command_buffer| unsafe {
+                let color_attachments = &[vk::RenderingAttachmentInfo::default()
+                    .image_view(
+                        ctx.texture_manager
+                            .get_buffer(self.attachment)
+                            .view
+                            .unwrap(),
+                    )
+                    .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                    .load_op(vk::AttachmentLoadOp::CLEAR)
+                    .store_op(vk::AttachmentStoreOp::STORE)
+                    .clear_value(vk::ClearValue {
+                        color: vk::ClearColorValue {
+                            float32: [0.0, 0.0, 0.0, 1.0],
+                        },
+                    })];
 
-            ctx.begin_rendering(command_buffer, color_attachments, None);
+                ctx.begin_rendering(command_buffer, color_attachments, None);
 
-            let pipeline = ctx.pipeline_manager.get_graphics_pipeline(pipeline_handle);
-            pipeline.bind(&ctx.device, command_buffer);
-            ctx.device.cmd_bind_vertex_buffers(
-                command_buffer,
-                0,
-                std::slice::from_ref(&ctx.buffer_manager.get_buffer(self.vertex_buffer).buffer),
-                &[0],
-            );
-            ctx.device.cmd_bind_index_buffer(
-                command_buffer,
-                ctx.buffer_manager.get_buffer(self.index_buffer).buffer,
-                0,
-                vk::IndexType::UINT32,
-            );
-            ctx.device.cmd_draw_indexed(command_buffer, 6, 1, 0, 0, 1);
-            ctx.end_rendering(command_buffer);
-        });
+                let pipeline = ctx
+                    .pipeline_manager
+                    .get_graphics_pipeline(self.pipeline_handle.as_ref().unwrap());
+                pipeline.bind(&ctx.device, command_buffer);
+                ctx.device.cmd_bind_vertex_buffers(
+                    command_buffer,
+                    0,
+                    std::slice::from_ref(&ctx.buffer_manager.get_buffer(self.vertex_buffer).buffer),
+                    &[0],
+                );
+                ctx.device.cmd_bind_index_buffer(
+                    command_buffer,
+                    ctx.buffer_manager.get_buffer(self.index_buffer).buffer,
+                    0,
+                    vk::IndexType::UINT32,
+                );
+                ctx.device.cmd_draw_indexed(command_buffer, 6, 1, 0, 0, 1);
+                ctx.end_rendering(command_buffer);
+            },
+        );
 
         ctx.submit(&ctx.draw_command_buffer, ctx.draw_commands_reuse_fence);
     }

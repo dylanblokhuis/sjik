@@ -1,9 +1,9 @@
 use std::mem::size_of;
 
 use beuk::ash::vk::{
-    self, PipelineVertexInputStateCreateInfo, PushConstantRange, ShaderStageFlags,
+    self, ImageCreateInfo, PipelineVertexInputStateCreateInfo, PushConstantRange, ShaderStageFlags,
 };
-use beuk::memory::MemoryLocation;
+use beuk::memory::{MemoryLocation, TextureHandle};
 use beuk::pipeline::BlendState;
 use beuk::{ctx::RenderContext, memory::PipelineHandle};
 use beuk::{
@@ -23,6 +23,7 @@ pub struct Renderer {
     pub pipeline_handle: PipelineHandle,
     // pub vertex_buffer: Option<BufferHandle>,
     // pub index_buffer: Option<BufferHandle>,
+    pub attachment_handle: TextureHandle,
     pub shapes: Vec<epaint::ClippedShape>,
 }
 
@@ -43,6 +44,32 @@ impl Renderer {
             beuk::shaders::ShaderKind::Fragment,
             "main",
         );
+
+        let image_format = ctx.render_swapchain.surface_format.format;
+        let (attachment_handle, _) = ctx.texture_manager.create_texture(
+            "ui",
+            &ImageCreateInfo {
+                image_type: vk::ImageType::TYPE_2D,
+                format: image_format,
+                extent: vk::Extent3D {
+                    width: ctx.render_swapchain.surface_resolution.width,
+                    height: ctx.render_swapchain.surface_resolution.height,
+                    depth: 1,
+                },
+                samples: vk::SampleCountFlags::TYPE_1,
+                usage: vk::ImageUsageFlags::COLOR_ATTACHMENT
+                    | vk::ImageUsageFlags::TRANSFER_SRC
+                    | vk::ImageUsageFlags::SAMPLED,
+                mip_levels: 1,
+                array_layers: 1,
+                sharing_mode: vk::SharingMode::EXCLUSIVE,
+                ..Default::default()
+            },
+        );
+
+        ctx.texture_manager
+            .get_buffer_mut(attachment_handle)
+            .create_view(&ctx.device);
 
         let pipeline_handle =
             ctx.pipeline_manager
@@ -75,7 +102,7 @@ impl Renderer {
                             stride: std::mem::size_of::<epaint::Vertex>() as u32,
                             input_rate: vk::VertexInputRate::VERTEX,
                         }]),
-                    color_attachment_formats: &[ctx.render_swapchain.surface_format.format],
+                    color_attachment_formats: &[image_format],
                     depth_attachment_format: vk::Format::UNDEFINED,
                     viewport: ctx.render_swapchain.surface_resolution,
                     primitive: PrimitiveState {
@@ -92,16 +119,17 @@ impl Renderer {
                             .size(size_of::<PushConstants>() as u32),
                     ),
                     blend: vec![BlendState::ALPHA_BLENDING],
+                    multisample: Default::default(),
                 });
 
         Self {
             pipeline_handle,
-
+            attachment_handle,
             shapes: vec![],
         }
     }
 
-    pub fn render(&mut self, render_context: &mut RenderContext, present_index: u32) {
+    pub fn render(&mut self, ctx: &mut RenderContext) {
         let primitives = epaint::tessellator::tessellate_shapes(
             1.0,
             TessellationOptions::default(),
@@ -113,14 +141,14 @@ impl Renderer {
         for (index, primitive) in primitives.iter().enumerate() {
             match &primitive.primitive {
                 Primitive::Mesh(mesh) => {
-                    let vertex_buffer = render_context.buffer_manager.create_buffer_with_data(
+                    let vertex_buffer = ctx.buffer_manager.create_buffer_with_data(
                         &format!("vertices_{}", index),
                         bytemuck::cast_slice(&mesh.vertices),
                         vk::BufferUsageFlags::VERTEX_BUFFER,
                         MemoryLocation::CpuToGpu,
                     );
 
-                    let index_buffer = render_context.buffer_manager.create_buffer_with_data(
+                    let index_buffer = ctx.buffer_manager.create_buffer_with_data(
                         &format!("indices-{}", index),
                         bytemuck::cast_slice(&mesh.indices),
                         vk::BufferUsageFlags::INDEX_BUFFER,
@@ -132,17 +160,23 @@ impl Renderer {
             }
         }
 
-        render_context.present_record(
-            present_index,
-            |ctx, command_buffer, present_index: u32| unsafe {
+        ctx.record(
+            ctx.draw_command_buffer,
+            Some(ctx.draw_commands_reuse_fence),
+            |ctx, command_buffer| unsafe {
                 let color_attachments = &[vk::RenderingAttachmentInfo::default()
-                    .image_view(ctx.render_swapchain.present_image_views[present_index as usize])
+                    .image_view(
+                        ctx.texture_manager
+                            .get_buffer(self.attachment_handle)
+                            .view
+                            .unwrap(),
+                    )
                     .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                    .load_op(vk::AttachmentLoadOp::LOAD)
+                    .load_op(vk::AttachmentLoadOp::CLEAR)
                     .store_op(vk::AttachmentStoreOp::STORE)
                     .clear_value(vk::ClearValue {
                         color: vk::ClearColorValue {
-                            float32: [1.0, 1.0, 1.0, 1.0],
+                            float32: [0.0, 0.0, 0.0, 0.0],
                         },
                     })];
 
@@ -185,5 +219,6 @@ impl Renderer {
                 ctx.end_rendering(command_buffer);
             },
         );
+        ctx.submit(&ctx.draw_command_buffer, ctx.draw_commands_reuse_fence);
     }
 }
