@@ -1,5 +1,7 @@
 use dioxus_native_core::prelude::*;
-use epaint::{ClippedShape, Color32};
+use epaint::emath::{Align, Align2};
+use epaint::text::FontDefinitions;
+use epaint::{ClippedShape, Color32, FontId};
 use peniko::kurbo::{Point, Vec2};
 
 use taffy::prelude::Layout;
@@ -45,9 +47,26 @@ fn render_node(
 ) {
     let taffy_node = node.get::<Tailwind>().unwrap().node.unwrap();
     let layout = taffy.layout(taffy_node).unwrap();
-    let location = location + Vec2::new(layout.location.x as f64, layout.location.y as f64);
+    let location: Point = location + Vec2::new(layout.location.x as f64, layout.location.y as f64);
     match &*node.node_type() {
-        NodeType::Text(TextNode { text: _, .. }) => {
+        NodeType::Text(TextNode { text, .. }) => {
+            let fonts = epaint::Fonts::new(1.0, 8 * 1024, FontDefinitions::default());
+            let parent = node.parent().unwrap();
+            let tailwind: &Tailwind = &parent.get().unwrap();
+            let color = translate_color(&tailwind.color);
+            let shape = epaint::Shape::text(
+                &fonts,
+                epaint::Pos2 { x: 50.0, y: 50.0 },
+                epaint::emath::Align2([Align::TOP, Align::LEFT]),
+                text,
+                FontId::default(),
+                Color32::from_rgba_unmultiplied(color.r, color.g, color.b, color.a),
+            );
+            let clip = shape.visual_bounding_rect();
+
+            println!("clip: {:?}", clip);
+
+            renderer.shapes.push(ClippedShape(clip, shape));
             // let text_color = translate_color(&node.get::<ForgroundColor>().unwrap().0);
             // let font_size = if let Some(font_size) = node.get::<FontSize>() {
             //     font_size.0
