@@ -14,16 +14,14 @@ use tao::{dpi::PhysicalSize, event_loop::EventLoopProxy};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 
 use crate::renderer::Renderer;
-use crate::style::Background;
+use crate::style::Tailwind;
 use crate::EventData;
 use crate::{
     events::{BlitzEventHandler, DomEvent},
     focus::{Focus, FocusState},
-    layout::TaffyLayout,
     mouse::MouseEffected,
     prevent_default::PreventDefault,
     render::render,
-    style::{Border, ForgroundColor},
     Redraw, TaoEvent,
 };
 use dioxus_native_core::{prelude::*, FxDashSet};
@@ -49,10 +47,7 @@ impl DioxusApp {
     ) -> Self {
         let mut rdom = RealDom::new([
             MouseEffected::to_type_erased(),
-            TaffyLayout::to_type_erased(),
-            ForgroundColor::to_type_erased(),
-            Background::to_type_erased(),
-            Border::to_type_erased(),
+            Tailwind::to_type_erased(),
             Focus::to_type_erased(),
             PreventDefault::to_type_erased(),
         ]);
@@ -106,7 +101,7 @@ impl DioxusApp {
         ) {
             if let Some(node) = rdom.get(node_id) {
                 if let Some((size, location)) = {
-                    let layout = node.get::<TaffyLayout>();
+                    let layout = node.get::<Tailwind>();
                     layout.and_then(|l| {
                         if let Ok(Layout { size, location, .. }) = taffy.layout(l.node.unwrap()) {
                             Some((size, location))
@@ -238,7 +233,7 @@ async fn spawn_dom(
 
         // the root node fills the entire area
         let root_node = rdom.get(rdom.root_id()).unwrap();
-        let root_taffy_node = root_node.get::<TaffyLayout>().unwrap().node.unwrap();
+        let root_taffy_node = root_node.get::<Tailwind>().unwrap().node.unwrap();
 
         let mut style = locked_taffy.style(root_taffy_node).unwrap().clone();
         style.size = Size {
@@ -288,7 +283,7 @@ async fn spawn_dom(
             last_size = size;
             let mut taffy = taffy.lock().unwrap();
             let root_node = rdom.get(rdom.root_id()).unwrap();
-            let root_node_layout = root_node.get::<TaffyLayout>().unwrap();
+            let root_node_layout = root_node.get::<Tailwind>().unwrap();
             let root_taffy_node = root_node_layout.node.unwrap();
             let mut style = taffy.style(root_taffy_node).unwrap().clone();
             let new_size = Size {

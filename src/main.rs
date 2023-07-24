@@ -2,20 +2,14 @@ use beuk::ash::vk::PresentModeKHR;
 use beuk::ctx::RenderContextDescriptor;
 use beuk::raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 
-use crossbeam_utils::atomic::AtomicCell;
-
 use decoder::{FrameQueue, MediaDecoder};
 use dioxus_beuk::{DioxusApp, Redraw};
 use media_render_pass::MediaRenderPass;
 use present_render_pass::PresentRenderPass;
 use tao::event_loop::ControlFlow;
-use tao::{
-    event::{Event, WindowEvent},
-    event_loop::EventLoop,
-    window::WindowBuilder,
-};
+use tao::{event::WindowEvent, event_loop::EventLoop, window::WindowBuilder};
 
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, RwLock};
 
 mod decoder;
 mod media_render_pass;
@@ -63,7 +57,7 @@ fn main() {
                 height,
                 queue: media_decoder.get_frame_queue(),
             });
-            media_decoder.start();
+            // media_decoder.start();
         }
     });
 
@@ -85,8 +79,6 @@ fn main() {
                 window.request_redraw();
             }
             tao::event::Event::RedrawRequested(_) => {
-                let present_index = ctx.acquire_present_index();
-
                 if rx.is_full() {
                     if let Some(current_video) = current_video.read().unwrap().as_ref() {
                         let frame = rx.recv().unwrap();
@@ -98,6 +90,8 @@ fn main() {
                 if !application.clean().is_empty() {
                     application.render(&mut ctx);
                 }
+
+                let present_index = ctx.acquire_present_index();
                 present_node.combine_and_draw(
                     &ctx,
                     application.get_attachment_handle(),

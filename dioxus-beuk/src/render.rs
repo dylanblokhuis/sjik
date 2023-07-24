@@ -8,9 +8,8 @@ use taffy::Taffy;
 use tao::dpi::PhysicalSize;
 
 use crate::focus::Focused;
-use crate::layout::TaffyLayout;
 use crate::renderer::Renderer;
-use crate::style::{Background, Border};
+use crate::style::Tailwind;
 
 use crate::util::Resolve;
 use crate::util::{translate_color, Axis};
@@ -44,7 +43,7 @@ fn render_node(
     location: Point,
     viewport_size: &Size<u32>,
 ) {
-    let taffy_node = node.get::<TaffyLayout>().unwrap().node.unwrap();
+    let taffy_node = node.get::<Tailwind>().unwrap().node.unwrap();
     let layout = taffy.layout(taffy_node).unwrap();
     let location = location + Vec2::new(layout.location.x as f64, layout.location.y as f64);
     match &*node.node_type() {
@@ -88,27 +87,43 @@ pub(crate) fn get_shape(
     let y: f64 = location.y;
     let width: f64 = layout.size.width.into();
     let height: f64 = layout.size.height.into();
-    let border: &Border = &node.get().unwrap();
+    let tailwind: &Tailwind = &node.get().unwrap();
     let focused = node.get::<Focused>().filter(|focused| focused.0).is_some();
     let left_border_width = if focused {
         FOCUS_BORDER_WIDTH
     } else {
-        border.width.left.resolve(axis, &rect, viewport_size)
+        tailwind
+            .border
+            .width
+            .left
+            .resolve(axis, &rect, viewport_size)
     };
     let right_border_width = if focused {
         FOCUS_BORDER_WIDTH
     } else {
-        border.width.right.resolve(axis, &rect, viewport_size)
+        tailwind
+            .border
+            .width
+            .right
+            .resolve(axis, &rect, viewport_size)
     };
     let top_border_width = if focused {
         FOCUS_BORDER_WIDTH
     } else {
-        border.width.top.resolve(axis, &rect, viewport_size)
+        tailwind
+            .border
+            .width
+            .top
+            .resolve(axis, &rect, viewport_size)
     };
     let bottom_border_width = if focused {
         FOCUS_BORDER_WIDTH
     } else {
-        border.width.bottom.resolve(axis, &rect, viewport_size)
+        tailwind
+            .border
+            .width
+            .bottom
+            .resolve(axis, &rect, viewport_size)
     };
 
     // The stroke is drawn on the outside of the border, so we need to offset the rect by the border width for each side.
@@ -117,8 +132,8 @@ pub(crate) fn get_shape(
     let x_end = x + width - right_border_width / 2.0;
     let y_end = y + height - bottom_border_width / 2.0;
 
-    let background = node.get::<Background>().unwrap();
-    let border_color = translate_color(&border.colors.bottom);
+    let border_color = translate_color(&tailwind.border.colors.left);
+    let background_color = translate_color(&tailwind.background_color);
 
     epaint::Shape::Rect(epaint::RectShape {
         rect: epaint::Rect {
@@ -132,31 +147,43 @@ pub(crate) fn get_shape(
             },
         },
         rounding: epaint::Rounding {
-            nw: border.radius.top_left.0.resolve(axis, &rect, viewport_size) as f32,
-            ne: border
+            nw: tailwind
+                .border
+                .radius
+                .top_left
+                .0
+                .resolve(axis, &rect, viewport_size) as f32,
+            ne: tailwind
+                .border
                 .radius
                 .top_right
                 .0
                 .resolve(axis, &rect, viewport_size) as f32,
-            se: border
+            se: tailwind
+                .border
                 .radius
                 .bottom_right
                 .0
                 .resolve(axis, &rect, viewport_size) as f32,
-            sw: border
+            sw: tailwind
+                .border
                 .radius
                 .bottom_left
                 .0
                 .resolve(axis, &rect, viewport_size) as f32,
         },
         fill: Color32::from_rgba_unmultiplied(
-            background.color.r,
-            background.color.g,
-            background.color.b,
-            background.color.a,
+            background_color.r,
+            background_color.g,
+            background_color.b,
+            background_color.a,
         ),
         stroke: epaint::Stroke {
-            width: border.width.top.resolve(axis, &rect, viewport_size) as f32,
+            width: tailwind
+                .border
+                .width
+                .top
+                .resolve(axis, &rect, viewport_size) as f32,
             color: Color32::from_rgba_premultiplied(
                 border_color.r,
                 border_color.g,
@@ -177,7 +204,7 @@ pub(crate) fn get_abs_pos(layout: Layout, taffy: &Taffy, node: NodeRef) -> Point
             break;
         }
         current = parent_id;
-        let taffy_node = parent.get::<TaffyLayout>().unwrap().node.unwrap();
+        let taffy_node = parent.get::<Tailwind>().unwrap().node.unwrap();
         let parent_layout = taffy.layout(taffy_node).unwrap();
         node_layout.x += parent_layout.location.x;
         node_layout.y += parent_layout.location.y;

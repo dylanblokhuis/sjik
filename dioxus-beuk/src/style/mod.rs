@@ -1,7 +1,3 @@
-mod background;
-mod border;
-mod foreground;
+mod tailwind;
 
-pub(crate) use background::Background;
-pub(crate) use border::Border;
-pub(crate) use foreground::ForgroundColor;
+pub(crate) use tailwind::Tailwind;

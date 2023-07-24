@@ -8,8 +8,8 @@ use shipyard::Component;
 use taffy::{prelude::Size, Taffy};
 
 use crate::{
-    layout::TaffyLayout,
     render::{get_abs_pos, get_shape},
+    style::Tailwind,
 };
 
 pub(crate) fn get_hovered(
@@ -47,7 +47,7 @@ pub(crate) fn check_hovered(
     viewport_size: &Size<u32>,
     mouse_pos: Point,
 ) -> bool {
-    let taffy_node = node.get::<TaffyLayout>().unwrap().node.unwrap();
+    let taffy_node = node.get::<Tailwind>().unwrap().node.unwrap();
     let node_layout = taffy.layout(taffy_node).unwrap();
     get_shape(
         node_layout,
