@@ -7,7 +7,7 @@ pub fn app(cx: Scope) -> Element {
       div {
         width: "{count}",
         height: "100px",
-        background: "red",
+        background: "blue",
         onclick: move |_| {
           count.set(count.get() + 10);
         }

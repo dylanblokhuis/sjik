@@ -28,3 +28,4 @@ beuk = { git = "https://github.com/dylanblokhuis/beuk", rev = "92517928827356123
 peniko = { git = "https://github.com/linebender/peniko" }
 bytemuck = { version = "1.13.1", features = ["derive"] }
 epaint = { version = "0.22.0", features = ["bytemuck"] }
+dioxus-hot-reload = { git = "https://github.com/DioxusLabs/dioxus/" }
