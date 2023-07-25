@@ -247,6 +247,7 @@ impl MediaDecoder {
                 };
 
                 unsafe {
+                    // bet gets lost in the process
                     let bet: i64 = (*frame.frame).best_effort_timestamp;
 
                     let sw_frame = av_frame_alloc();
@@ -315,10 +316,13 @@ impl MediaDecoder {
                     let data: Vec<i32> =
                         slice::from_raw_parts((*frame).data[0] as _, size).to_vec();
 
-                    let bet: i64 = (*frame).best_effort_timestamp;
                     let stream =
-                        (*self.format_context.get_stream(self.video_stream_index)).time_base;
-                    let pts_nano = av_rescale_q(bet, stream, av_make_q(1, ONE_NANOSECOND as i32));
+                        (*self.format_context.get_stream(self.audio_stream_index)).time_base;
+                    let pts_nano = av_rescale_q(
+                        (*frame).best_effort_timestamp,
+                        stream,
+                        av_make_q(1, ONE_NANOSECOND as i32),
+                    );
 
                     let samples_with_pts: Vec<(i64, f32)> = data
                         .iter()
