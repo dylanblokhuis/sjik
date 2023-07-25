@@ -1,23 +1,18 @@
 use std::collections::HashMap;
 use std::slice;
-use std::sync::Arc;
+use std::sync::atomic::AtomicI64;
 
 use cpal::{traits::StreamTrait, ChannelCount, SampleRate, Stream};
-use crossbeam_queue::ArrayQueue;
 use ringbuf::{HeapConsumer, HeapProducer, HeapRb};
 use stainless_ffmpeg::prelude::FormatContext;
 use stainless_ffmpeg::prelude::*;
 use stainless_ffmpeg::probe::Probe;
-// Since the Rust time-functions `Duration` and `Instant` work with nanoseconds
-// by default, it is much simpler to convert a PTS to nanoseconds,
-// that is why the following constant has been added.
+
 const ONE_NANOSECOND: i64 = 1000000000;
 
-pub type FrameQueue = Arc<ArrayQueue<(i64, Vec<u8>)>>;
-
 pub struct MediaDecoder {
-    audio_producer: HeapProducer<f32>,
-    video_queue: FrameQueue,
+    audio_producer: HeapProducer<(i64, f32)>,
+    video_producer: HeapProducer<(i64, Vec<u8>)>,
     _audio_stream: Stream,
     format_context: FormatContext,
     audio_decoder: AudioDecoder,
@@ -161,49 +156,63 @@ impl MediaDecoder {
             audio_graph
         };
 
-        let video_queue = Arc::new(ArrayQueue::new(10));
-        let (audio_producer, audio_consumer) = HeapRb::<f32>::new(50 * 1024 * 1024).split();
+        let (video_producer, mut video_consumer) = HeapRb::<(i64, Vec<u8>)>::new(20).split();
+        let (audio_producer, audio_consumer) = HeapRb::<(i64, f32)>::new(50 * 1024 * 1024).split();
+        let audio_clock = std::sync::Arc::new(AtomicI64::new(0));
 
         std::thread::spawn({
-            let video_queue = video_queue.clone();
-            move || {
-                let mut prev_pts = None;
-                let mut now = std::time::Instant::now();
+            let audio_clock = audio_clock.clone();
+            move || loop {
+                if video_consumer.is_empty() {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                    continue;
+                }
+                let current_audio_time = audio_clock.load(std::sync::atomic::Ordering::Acquire);
 
-                loop {
-                    // std::thread::sleep(std::time::Duration::from_millis(10));
-                    // log::debug!(
-                    //     "video queue size: {}",
-                    //     video_queue_clone.lock().unwrap().len()
-                    // );
-                    if let Some((pts, frame)) = video_queue.pop() {
-                        if let Some(prev) = prev_pts {
-                            let elapsed = now.elapsed();
-                            if pts > prev {
-                                let sleep_time = std::time::Duration::new(0, (pts - prev) as u32);
-                                if elapsed < sleep_time {
-                                    log::debug!("sleeping for {:?}", sleep_time - elapsed);
-                                    spin_sleep::sleep(sleep_time - elapsed);
-                                }
-                            }
-                        }
+                if current_audio_time == 0 {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                    continue;
+                }
 
-                        prev_pts = Some(pts);
-                        now = std::time::Instant::now();
+                let oldest_frame_in_queue = video_consumer.iter().next().unwrap().0;
 
-                        new_frame_callback(frame);
-                    }
+                if oldest_frame_in_queue > current_audio_time {
+                    let sleep_time = std::time::Duration::new(
+                        0,
+                        (oldest_frame_in_queue - current_audio_time) as u32,
+                    );
+
+                    log::info!("sleeping for {:?}", sleep_time);
+                    spin_sleep::sleep(sleep_time);
+                }
+
+                if let Some((_, frame)) = video_consumer.pop() {
+                    // log::info!("video pts: {}", pts);
+                    // log::info!("audio pts: {}", current_audio_time);
+
+                    // if pts > current_audio_time {
+                    //     let sleep_time =
+                    //         std::time::Duration::new(0, (pts - current_audio_time) as u32);
+
+                    //     log::info!("sleeping for {:?}", sleep_time);
+                    //     spin_sleep::sleep(sleep_time);
+                    // }
+                    new_frame_callback(frame);
                 }
             }
         });
 
-        let _audio_stream =
-            setup_audio_stream(audio_consumer, channels, SampleRate(resample_rate as u32));
+        let _audio_stream = setup_audio_stream(
+            audio_consumer,
+            channels,
+            SampleRate(resample_rate as u32),
+            audio_clock,
+        );
         _audio_stream.play().unwrap();
 
         Self {
             audio_producer,
-            video_queue,
+            video_producer,
             _audio_stream,
             format_context,
             audio_decoder,
@@ -215,10 +224,6 @@ impl MediaDecoder {
         }
     }
 
-    pub fn get_frame_queue(&self) -> Arc<ArrayQueue<(i64, Vec<u8>)>> {
-        self.video_queue.clone()
-    }
-
     pub fn get_video_size(&self) -> (u32, u32) {
         let width = self.video_decoder.get_width() as u32;
         let height = self.video_decoder.get_height() as u32;
@@ -227,7 +232,7 @@ impl MediaDecoder {
 
     pub fn start(&mut self) {
         loop {
-            if self.video_queue.len() >= 10 {
+            if self.video_producer.len() >= 10 {
                 std::thread::sleep(std::time::Duration::from_millis(10));
                 continue;
             }
@@ -293,7 +298,7 @@ impl MediaDecoder {
                         x => panic!("Unsupported pixel format {x}"),
                     };
                     log::debug!("color_data {:?}", color_data.len());
-                    self.video_queue.push((pts_nano, color_data)).unwrap();
+                    self.video_producer.push((pts_nano, color_data)).unwrap();
                 }
             }
 
@@ -309,12 +314,18 @@ impl MediaDecoder {
                     let size = ((*frame).channels * (*frame).nb_samples) as usize;
                     let data: Vec<i32> =
                         slice::from_raw_parts((*frame).data[0] as _, size).to_vec();
-                    let float_samples: Vec<f32> = data
+
+                    let bet: i64 = (*frame).best_effort_timestamp;
+                    let stream =
+                        (*self.format_context.get_stream(self.video_stream_index)).time_base;
+                    let pts_nano = av_rescale_q(bet, stream, av_make_q(1, ONE_NANOSECOND as i32));
+
+                    let samples_with_pts: Vec<(i64, f32)> = data
                         .iter()
-                        .map(|value| (*value as f32) / i32::MAX as f32)
+                        .map(|sample| (pts_nano, (*sample as f32) / i32::MAX as f32))
                         .collect();
 
-                    self.audio_producer.push_slice(&float_samples);
+                    self.audio_producer.push_slice(&samples_with_pts);
                 }
             }
         }
@@ -390,9 +401,10 @@ impl MediaDecoder {
 }
 
 fn setup_audio_stream(
-    mut audio_consumer: HeapConsumer<f32>,
+    mut audio_consumer: HeapConsumer<(i64, f32)>,
     channels: ChannelCount,
     sample_rate: SampleRate,
+    audio_clock: std::sync::Arc<AtomicI64>,
 ) -> Stream {
     use cpal::traits::{DeviceTrait, HostTrait};
 
@@ -421,7 +433,18 @@ fn setup_audio_stream(
         .build_output_stream(
             &config,
             move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                audio_consumer.pop_slice(data);
+                let mut data_without_pts: Vec<(i64, f32)> = vec![(0, 0.0); data.len()];
+                audio_consumer.pop_slice(&mut data_without_pts);
+                for (i, (_, sample)) in data_without_pts.iter().enumerate() {
+                    data[i] = *sample;
+                }
+
+                data_without_pts
+                    .last()
+                    .map(|(pts, _)| {
+                        audio_clock.store(*pts, std::sync::atomic::Ordering::Release);
+                    })
+                    .unwrap();
             },
             move |err| println!("CPAL error: {:?}", err),
             None,

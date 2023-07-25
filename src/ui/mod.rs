@@ -11,7 +11,6 @@ pub fn app(cx: Scope) -> Element {
           class: "bg-slate-500 w-full py-10 flex-col justify-center items-center",
           div {
             class: "bg-slate-400 w-40 h-40 border-2 rounded-50 border-blue-100 text-blue-100",
-            "Hello, world!"
           }
         }
       }
