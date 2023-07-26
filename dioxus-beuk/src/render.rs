@@ -54,8 +54,9 @@ fn render_node(
             let parent = node.parent().unwrap();
             let tailwind: &Tailwind = &parent.get().unwrap();
             let color = translate_color(&tailwind.color);
+
             let shape = epaint::Shape::text(
-                &renderer.fonts.read().unwrap(),
+                &renderer.state.fonts.read().unwrap(),
                 epaint::Pos2 {
                     x: location.x as f32,
                     y: location.y as f32,
@@ -66,7 +67,6 @@ fn render_node(
                 epaint::Color32::from_rgba_unmultiplied(color.r, color.g, color.b, color.a),
             );
             let clip = shape.visual_bounding_rect();
-
             renderer.shapes.push(ClippedShape(clip, shape));
         }
         NodeType::Element(_) => {

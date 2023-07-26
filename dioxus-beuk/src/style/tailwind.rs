@@ -13,6 +13,8 @@ use shipyard::Component;
 use taffy::prelude::*;
 use taffy::style::Style;
 
+use crate::application::RendererState;
+
 type Colors = HashMap<&'static str, HashMap<&'static str, [u8; 4]>>;
 #[derive(Clone, PartialEq, Debug, Component)]
 pub(crate) struct Border {
@@ -49,14 +51,14 @@ impl State for Tailwind {
         context: &SendAnyMap,
     ) -> bool {
         let taffy: &std::sync::Arc<std::sync::Mutex<Taffy>> = context.get().unwrap();
-        let fonts: &std::sync::Arc<std::sync::RwLock<Fonts>> = context.get().unwrap();
+        let state: &RendererState = context.get().unwrap();
         // let text_context: &Arc<Mutex<TextContext>> = context.get().unwrap();
         let mut taffy = taffy.lock().unwrap();
         let mut changed = false;
 
         if let Some(text) = node_view.text() {
             let shape = epaint::Shape::text(
-                &fonts.read().unwrap(),
+                &state.fonts.read().unwrap(),
                 epaint::Pos2 { x: 0.0, y: 0.0 },
                 epaint::emath::Align2([Align::TOP, Align::LEFT]),
                 text,

@@ -17,6 +17,11 @@ pub fn app(cx: Scope) -> Element {
             class: "bg-slate-400 border-2 rounded-50 border-blue-100 text-red-100 p-10",
             "Lorem Ipsum Dolor Sit amet!"
           }
+
+          img {
+            class: "w-100 h-100",
+            src: "https://i.imgur.com/2bYg1hY.jpg"
+          }
         }
       }
     })

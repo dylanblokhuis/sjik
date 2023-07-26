@@ -17,6 +17,8 @@ use std::sync::{Arc, RwLock};
 use epaint::textures::TextureOptions;
 use epaint::{Fonts, Primitive, TessellationOptions, TextureId, TextureManager};
 
+use crate::application::RendererState;
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct PushConstants {
@@ -30,13 +32,12 @@ pub struct Renderer {
     pub attachment_handle: TextureHandle,
     pub multisampled_handle: Option<TextureHandle>,
     pub shapes: Vec<epaint::ClippedShape>,
-    pub fonts: Arc<RwLock<epaint::Fonts>>,
+    pub state: RendererState,
     pub textures: HashMap<epaint::TextureId, TextureHandle>,
-    pub tex_manager: TextureManager,
 }
 
 impl Renderer {
-    pub fn new(ctx: &mut RenderContext, fonts: Arc<RwLock<Fonts>>) -> Self {
+    pub fn new(ctx: &mut RenderContext, state: RendererState) -> Self {
         let vertex_shader = Shader::from_source_text(
             &ctx.device,
             include_str!("./shader.vert"),
@@ -167,31 +168,29 @@ impl Renderer {
                 });
 
         let textures: HashMap<TextureId, TextureHandle> = HashMap::new();
-        let tex_manager = TextureManager::default();
 
         Self {
             pipeline_handle,
             attachment_handle,
             multisampled_handle,
             shapes: vec![],
-            fonts,
+            state,
             textures,
-            tex_manager,
         }
     }
 
     pub fn render(&mut self, ctx: &mut RenderContext) {
         let texture_delta = {
-            let font_image_delta = self.fonts.read().unwrap().font_image_delta();
+            let font_image_delta = self.state.fonts.read().unwrap().font_image_delta();
             if let Some(font_image_delta) = font_image_delta {
-                self.tex_manager.alloc(
+                self.state.tex_manager.write().unwrap().alloc(
                     "font".into(),
                     font_image_delta.image,
                     TextureOptions::LINEAR,
                 );
             }
 
-            self.tex_manager.take_delta()
+            self.state.tex_manager.write().unwrap().take_delta()
         };
 
         println!(
@@ -264,14 +263,14 @@ impl Renderer {
         }
 
         let (font_tex_size, prepared_discs) = {
-            let fonts = self.fonts.read().unwrap();
+            let fonts = self.state.fonts.read().unwrap();
             let atlas = fonts.texture_atlas();
             let atlas = atlas.lock();
             (atlas.size(), atlas.prepared_discs())
         };
 
         let primitives = epaint::tessellator::tessellate_shapes(
-            self.fonts.read().unwrap().pixels_per_point(),
+            self.state.fonts.read().unwrap().pixels_per_point(),
             TessellationOptions::default(),
             font_tex_size,
             prepared_discs,
@@ -372,6 +371,11 @@ impl Renderer {
             },
         );
         ctx.submit(&ctx.draw_command_buffer, ctx.draw_commands_reuse_fence);
+
+        for (vertex_handle, index_handle, _, _) in draw_list.iter() {
+            ctx.buffer_manager.remove_buffer(*vertex_handle);
+            ctx.buffer_manager.remove_buffer(*index_handle);
+        }
 
         if let Some(multisampled_handle) = self.multisampled_handle {
             ctx.record(

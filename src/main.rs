@@ -47,12 +47,12 @@ fn main() {
         let current_video = current_video.clone();
 
         move || {
-            let mut media_decoder = MediaDecoder::new("http://192.168.178.49:32400/library/parts/1739/1690127603/file.mkv?download=1&X-Plex-Token=J3j74Py7w49SsXrq3ThS", move|frame| {
-                tx.send(frame).unwrap();
-            });
-            let (width, height) = media_decoder.get_video_size();
-            *current_video.write().unwrap() = Some(CurrentVideo { width, height });
-            media_decoder.start();
+            // let mut media_decoder = MediaDecoder::new("http://192.168.178.49:32400/library/parts/1739/1690127603/file.mkv?download=1&X-Plex-Token=J3j74Py7w49SsXrq3ThS", move|frame| {
+            //     tx.send(frame).unwrap();
+            // });
+            // let (width, height) = media_decoder.get_video_size();
+            // *current_video.write().unwrap() = Some(CurrentVideo { width, height });
+            // media_decoder.start();
         }
     });
 

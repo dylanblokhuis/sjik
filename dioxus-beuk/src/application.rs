@@ -3,7 +3,7 @@ use beuk::ctx::RenderContext;
 use beuk::memory::TextureHandle;
 use dioxus::prelude::{Element, Scope, VirtualDom};
 use epaint::text::FontDefinitions;
-use epaint::Fonts;
+use epaint::{Fonts, TextureManager};
 use quadtree_rs::area::AreaBuilder;
 use quadtree_rs::Quadtree;
 use rustc_hash::FxHashSet;
@@ -40,6 +40,12 @@ pub struct DioxusApp {
     quadtree: Quadtree<u64, NodeId>,
 }
 
+#[derive(Clone)]
+pub struct RendererState {
+    pub fonts: Arc<RwLock<Fonts>>,
+    pub tex_manager: Arc<RwLock<TextureManager>>,
+}
+
 impl DioxusApp {
     /// Create a new window state and spawn a vdom thread.
     pub fn new(
@@ -55,16 +61,19 @@ impl DioxusApp {
         ]);
 
         let focus_state = FocusState::create(&mut rdom);
-        let fonts = Arc::new(RwLock::new(Fonts::new(
-            1.0,
-            8 * 1024,
-            FontDefinitions::default(),
-        )));
-        let renderer = Renderer::new(render_context, fonts.clone());
+        let state = RendererState {
+            fonts: Arc::new(RwLock::new(Fonts::new(
+                1.0,
+                8 * 1024,
+                FontDefinitions::default(),
+            ))),
+            tex_manager: Arc::new(RwLock::new(TextureManager::default())),
+        };
+        let renderer = Renderer::new(render_context, state.clone());
 
         let dom = DomManager::spawn(
             rdom,
-            fonts,
+            state,
             PhysicalSize {
                 width: render_context.render_swapchain.surface_resolution.width,
                 height: render_context.render_swapchain.surface_resolution.height,
@@ -206,7 +215,7 @@ impl DioxusApp {
 #[allow(clippy::too_many_arguments)]
 async fn spawn_dom(
     rdom: Arc<RwLock<RealDom>>,
-    fonts: Arc<RwLock<Fonts>>,
+    state: RendererState,
     taffy: Arc<Mutex<Taffy>>,
     size: Arc<Mutex<PhysicalSize<u32>>>,
     app: fn(Scope) -> Element,
@@ -225,7 +234,7 @@ async fn spawn_dom(
         renderer.update(rdom.get_mut(root_id)?);
         let mut ctx = SendAnyMap::new();
         ctx.insert(taffy.clone());
-        ctx.insert(fonts.clone());
+        ctx.insert(state.clone());
         // update the state of the real dom
         let (to_rerender, _) = rdom.update_state(ctx);
         let size = size.lock().unwrap();
@@ -277,7 +286,7 @@ async fn spawn_dom(
 
         let mut ctx = SendAnyMap::new();
         ctx.insert(taffy.clone());
-        ctx.insert(fonts.clone());
+        ctx.insert(state.clone());
 
         // update the real dom
         let (to_rerender, _) = rdom.update_state(ctx);
@@ -330,7 +339,7 @@ struct DomManager {
 impl DomManager {
     fn spawn(
         rdom: RealDom,
-        fonts: Arc<RwLock<Fonts>>,
+        state: RendererState,
         size: PhysicalSize<u32>,
         app: fn(Scope) -> Element,
         proxy: EventLoopProxy<Redraw>,
@@ -353,7 +362,7 @@ impl DomManager {
                 .unwrap()
                 .block_on(spawn_dom(
                     rdom_clone,
-                    fonts,
+                    state,
                     taffy_clone,
                     size_clone,
                     app,
