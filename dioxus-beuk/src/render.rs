@@ -1,7 +1,7 @@
 use dioxus_native_core::prelude::*;
 use epaint::emath::{Align, Align2};
-use epaint::text::FontDefinitions;
-use epaint::{ClippedShape, Color32, FontId};
+use epaint::text::{FontData, FontDefinitions};
+use epaint::{ClippedShape, Color32, FontFamily, FontId};
 use peniko::kurbo::{Point, Vec2};
 
 use taffy::prelude::Layout;
@@ -26,6 +26,27 @@ pub(crate) fn render(
     window_size: PhysicalSize<u32>,
 ) {
     let root = &dom.get(dom.root_id()).unwrap();
+
+    // // Install my own font (maybe supporting non-latin characters):
+    // fonts.font_data.insert(
+    //     "my_font".to_owned(),
+    //     FontData::from_static(include_bytes!("../../Ubuntu-Light.ttf")),
+    // ); // .ttf and .otf supported
+
+    // // Put my font first (highest priority):
+    // fonts
+    //     .families
+    //     .get_mut(&FontFamily::Proportional)
+    //     .unwrap()
+    //     .insert(0, "my_font".to_owned());
+
+    // // Put my font as last fallback for monospace:
+    // fonts
+    //     .families
+    //     .get_mut(&FontFamily::Monospace)
+    //     .unwrap()
+    //     .push("my_font".to_owned());
+
     render_node(
         taffy,
         *root,
@@ -50,17 +71,16 @@ fn render_node(
     let location: Point = location + Vec2::new(layout.location.x as f64, layout.location.y as f64);
     match &*node.node_type() {
         NodeType::Text(TextNode { text, .. }) => {
-            let fonts = epaint::Fonts::new(1.0, 8 * 1024, FontDefinitions::default());
             let parent = node.parent().unwrap();
             let tailwind: &Tailwind = &parent.get().unwrap();
             let color = translate_color(&tailwind.color);
             let shape = epaint::Shape::text(
-                &fonts,
+                &renderer.fonts,
                 epaint::Pos2 { x: 50.0, y: 50.0 },
                 epaint::emath::Align2([Align::TOP, Align::LEFT]),
                 text,
                 FontId::default(),
-                Color32::from_rgba_unmultiplied(color.r, color.g, color.b, color.a),
+                epaint::Color32::from_rgba_unmultiplied(color.r, color.g, color.b, color.a),
             );
             let clip = shape.visual_bounding_rect();
 

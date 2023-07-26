@@ -78,7 +78,7 @@ impl MediaRenderPass {
         );
 
         let attachment_format = ctx.render_swapchain.surface_format.format;
-        let (attachment_handle, _) = ctx.texture_manager.create_texture(
+        let attachment_handle = ctx.texture_manager.create_texture(
             "media",
             &ImageCreateInfo {
                 image_type: vk::ImageType::TYPE_2D,
@@ -88,10 +88,10 @@ impl MediaRenderPass {
                     height: ctx.render_swapchain.surface_resolution.height,
                     depth: 1,
                 },
-                samples: vk::SampleCountFlags::TYPE_1,
                 usage: vk::ImageUsageFlags::COLOR_ATTACHMENT
                     | vk::ImageUsageFlags::TRANSFER_SRC
                     | vk::ImageUsageFlags::SAMPLED,
+                samples: vk::SampleCountFlags::TYPE_1,
                 mip_levels: 1,
                 array_layers: 1,
                 sharing_mode: vk::SharingMode::EXCLUSIVE,
@@ -99,7 +99,7 @@ impl MediaRenderPass {
             },
         );
         ctx.texture_manager
-            .get_buffer_mut(attachment_handle)
+            .get_texture_mut(attachment_handle)
             .create_view(&ctx.device);
 
         Self {
@@ -190,7 +190,7 @@ void main() {
                         }]),
                     color_attachment_formats: &[ctx
                         .texture_manager
-                        .get_buffer(self.attachment)
+                        .get_texture(self.attachment)
                         .format],
                     depth_attachment_format: vk::Format::UNDEFINED,
                     viewport: ctx.render_swapchain.surface_resolution,
@@ -204,7 +204,7 @@ void main() {
                     multisample: Default::default(),
                 });
 
-        let (yuv, _) = ctx.texture_manager.create_texture(
+        let yuv = ctx.texture_manager.create_texture(
             "yuv420",
             &ImageCreateInfo {
                 image_type: vk::ImageType::TYPE_2D,
@@ -232,7 +232,7 @@ void main() {
 
         {
             let uniform = ctx.buffer_manager.get_buffer(uniform_handle);
-            let texture = ctx.texture_manager.get_buffer_mut(yuv);
+            let texture = ctx.texture_manager.get_texture_mut(yuv);
 
             let (sampler_conversion, _) = ctx
                 .pipeline_manager
@@ -370,9 +370,9 @@ void main() {
 
         ctx.record(
             ctx.setup_command_buffer,
-            Some(ctx.setup_commands_reuse_fence),
+            ctx.setup_commands_reuse_fence,
             |ctx, command_buffer| unsafe {
-                let texture = ctx.texture_manager.get_buffer(yuv);
+                let texture = ctx.texture_manager.get_texture(yuv);
                 let frame_buffer = ctx.buffer_manager.get_buffer(frame_buffer);
 
                 let layout_transition_barriers = vk::ImageMemoryBarrier::default()
@@ -479,9 +479,9 @@ void main() {
 
         ctx.record(
             ctx.setup_command_buffer,
-            Some(ctx.setup_commands_reuse_fence),
+            ctx.setup_commands_reuse_fence,
             |ctx, command_buffer| unsafe {
-                let texture = ctx.texture_manager.get_buffer(yuv);
+                let texture = ctx.texture_manager.get_texture(yuv);
                 let frame_buffer = ctx.buffer_manager.get_buffer(frame_buffer);
 
                 let layout_transition_barriers = vk::ImageMemoryBarrier::default()
@@ -586,12 +586,12 @@ void main() {
 
         ctx.record(
             ctx.draw_command_buffer,
-            Some(ctx.draw_commands_reuse_fence),
+            ctx.draw_commands_reuse_fence,
             |ctx, command_buffer| unsafe {
                 let color_attachments = &[vk::RenderingAttachmentInfo::default()
                     .image_view(
                         ctx.texture_manager
-                            .get_buffer(self.attachment)
+                            .get_texture(self.attachment)
                             .view
                             .unwrap(),
                     )

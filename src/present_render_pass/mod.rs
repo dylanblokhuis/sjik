@@ -141,7 +141,7 @@ impl PresentRenderPass {
                             &vk::DescriptorImageInfo::default()
                                 .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                                 .image_view(
-                                    ctx.texture_manager.get_buffer(ui_attachment).view.unwrap(),
+                                    ctx.texture_manager.get_texture(ui_attachment).view.unwrap(),
                                 )
                                 .sampler(ctx.pipeline_manager.immutable_shader_info.get_sampler(
                                     &SamplerDesc {
@@ -160,7 +160,7 @@ impl PresentRenderPass {
                                 .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                                 .image_view(
                                     ctx.texture_manager
-                                        .get_buffer(media_attachment)
+                                        .get_texture(media_attachment)
                                         .view
                                         .unwrap(),
                                 )

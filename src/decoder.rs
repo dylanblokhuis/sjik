@@ -30,7 +30,7 @@ impl MediaDecoder {
     {
         let mut probe = Probe::new(path_or_url);
         probe.process(log::LevelFilter::Off).unwrap();
-        println!("{}", probe.format.unwrap());
+        // println!("{}", probe.format.unwrap());
 
         let mut format_context = FormatContext::new(path_or_url).unwrap();
         format_context.open_input().unwrap();
@@ -39,7 +39,7 @@ impl MediaDecoder {
         let mut first_video_stream = None;
         for i in 0..format_context.get_nb_streams() {
             let stream_type = format_context.get_stream_type(i as isize);
-            println!("Stream {}: {:?}", i, stream_type);
+            log::debug!("Stream {}: {:?}", i, stream_type);
 
             if stream_type == AVMediaType::AVMEDIA_TYPE_AUDIO {
                 first_audio_stream = Some(i as isize);
@@ -187,16 +187,6 @@ impl MediaDecoder {
                 }
 
                 if let Some((_, frame)) = video_consumer.pop() {
-                    // log::info!("video pts: {}", pts);
-                    // log::info!("audio pts: {}", current_audio_time);
-
-                    // if pts > current_audio_time {
-                    //     let sleep_time =
-                    //         std::time::Duration::new(0, (pts - current_audio_time) as u32);
-
-                    //     log::info!("sleeping for {:?}", sleep_time);
-                    //     spin_sleep::sleep(sleep_time);
-                    // }
                     new_frame_callback(frame);
                 }
             }

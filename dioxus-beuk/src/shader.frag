@@ -7,4 +7,6 @@ layout(location = 1) in vec2 inUV;
 
 layout(location = 0) out vec4 outColor;
 
-void main() { outColor = inColor; }
+layout(binding = 0, set = 0) uniform sampler2D font_texture;
+
+void main() { outColor = inColor * texture(font_texture, inUV); }

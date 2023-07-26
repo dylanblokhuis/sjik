@@ -34,8 +34,9 @@ impl State for Tailwind {
     type ParentDependencies = ();
     type NodeDependencies = ();
 
-    const NODE_MASK: NodeMaskBuilder<'static> =
-        NodeMaskBuilder::new().with_attrs(AttributeMaskBuilder::Some(&["class"]));
+    const NODE_MASK: NodeMaskBuilder<'static> = NodeMaskBuilder::new()
+        .with_attrs(AttributeMaskBuilder::Some(&["class"]))
+        .with_text();
 
     fn update<'a>(
         &mut self,
@@ -49,6 +50,39 @@ impl State for Tailwind {
         // let text_context: &Arc<Mutex<TextContext>> = context.get().unwrap();
         let mut taffy = taffy.lock().unwrap();
         let mut changed = false;
+
+        if let Some(text) = node_view.text() {
+            let width = 50.0;
+            let height = 50.0;
+
+            let style = Style {
+                size: Size {
+                    height: Dimension::Points(height as f32),
+                    width: Dimension::Points(width as f32),
+                },
+                ..Default::default()
+            };
+
+            let style_has_changed = self.style != style;
+
+            if let Some(n) = self.node {
+                if style_has_changed {
+                    taffy.set_style(n, style.clone()).unwrap();
+                    changed = true;
+                }
+            } else {
+                self.node = Some(taffy.new_leaf(style.clone()).unwrap());
+                changed = true;
+            }
+
+            if style_has_changed {
+                self.style = style;
+                changed = true;
+            }
+
+            return changed;
+        }
+
         let mut classes = String::new();
         if let Some(class_attr) = node_view
             .attributes()
@@ -58,6 +92,7 @@ impl State for Tailwind {
         {
             classes = class_attr.value.to_string();
         };
+
         let mut colors = Colors::new();
         insert_default_colors(&mut colors);
 
