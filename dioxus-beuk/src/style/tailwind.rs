@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use dioxus_native_core::prelude::*;
 use dioxus_native_core_macro::partial_derive_state;
 
+use epaint::emath::Align;
+use epaint::{FontId, Fonts};
 use lightningcss::properties::border::{BorderColor, BorderSideWidth, BorderWidth};
 use lightningcss::properties::border_radius::BorderRadius;
 use lightningcss::values::color::CssColor;
@@ -47,18 +49,28 @@ impl State for Tailwind {
         context: &SendAnyMap,
     ) -> bool {
         let taffy: &std::sync::Arc<std::sync::Mutex<Taffy>> = context.get().unwrap();
+        let fonts: &std::sync::Arc<std::sync::RwLock<Fonts>> = context.get().unwrap();
         // let text_context: &Arc<Mutex<TextContext>> = context.get().unwrap();
         let mut taffy = taffy.lock().unwrap();
         let mut changed = false;
 
         if let Some(text) = node_view.text() {
-            let width = 50.0;
-            let height = 50.0;
+            let shape = epaint::Shape::text(
+                &fonts.read().unwrap(),
+                epaint::Pos2 { x: 0.0, y: 0.0 },
+                epaint::emath::Align2([Align::TOP, Align::LEFT]),
+                text,
+                FontId::default(),
+                epaint::Color32::WHITE,
+            );
+            let rect = shape.visual_bounding_rect();
+            let width = rect.width();
+            let height = rect.height();
 
             let style = Style {
                 size: Size {
-                    height: Dimension::Points(height as f32),
-                    width: Dimension::Points(width as f32),
+                    width: Dimension::Points(width),
+                    height: Dimension::Points(height),
                 },
                 ..Default::default()
             };

@@ -14,7 +14,7 @@ pub fn app(cx: Scope) -> Element {
           onclick: move |_| count.set(count.get() + 1),
 
           div {
-            class: "bg-slate-400 w-40 h-40 border-2 rounded-50 border-blue-100 text-blue-100",
+            class: "bg-slate-400 border-2 rounded-50 border-blue-100 text-red-100 p-10",
             "Lorem Ipsum Dolor Sit amet!"
           }
         }

@@ -27,26 +27,6 @@ pub(crate) fn render(
 ) {
     let root = &dom.get(dom.root_id()).unwrap();
 
-    // // Install my own font (maybe supporting non-latin characters):
-    // fonts.font_data.insert(
-    //     "my_font".to_owned(),
-    //     FontData::from_static(include_bytes!("../../Ubuntu-Light.ttf")),
-    // ); // .ttf and .otf supported
-
-    // // Put my font first (highest priority):
-    // fonts
-    //     .families
-    //     .get_mut(&FontFamily::Proportional)
-    //     .unwrap()
-    //     .insert(0, "my_font".to_owned());
-
-    // // Put my font as last fallback for monospace:
-    // fonts
-    //     .families
-    //     .get_mut(&FontFamily::Monospace)
-    //     .unwrap()
-    //     .push("my_font".to_owned());
-
     render_node(
         taffy,
         *root,
@@ -75,8 +55,11 @@ fn render_node(
             let tailwind: &Tailwind = &parent.get().unwrap();
             let color = translate_color(&tailwind.color);
             let shape = epaint::Shape::text(
-                &renderer.fonts,
-                epaint::Pos2 { x: 50.0, y: 50.0 },
+                &renderer.fonts.read().unwrap(),
+                epaint::Pos2 {
+                    x: location.x as f32,
+                    y: location.y as f32,
+                },
                 epaint::emath::Align2([Align::TOP, Align::LEFT]),
                 text,
                 FontId::default(),
@@ -84,23 +67,7 @@ fn render_node(
             );
             let clip = shape.visual_bounding_rect();
 
-            println!("clip: {:?}", clip);
-
             renderer.shapes.push(ClippedShape(clip, shape));
-            // let text_color = translate_color(&node.get::<ForgroundColor>().unwrap().0);
-            // let font_size = if let Some(font_size) = node.get::<FontSize>() {
-            //     font_size.0
-            // } else {
-            //     DEFAULT_FONT_SIZE
-            // };
-            // text_context.add(
-            //     scene_builder,
-            //     None,
-            //     font_size,
-            //     Some(text_color),
-            //     Affine::translate(pos.to_vec2() + Vec2::new(0.0, font_size as f64)),
-            //     text,
-            // )
         }
         NodeType::Element(_) => {
             let shape = get_shape(layout, node, viewport_size, location);

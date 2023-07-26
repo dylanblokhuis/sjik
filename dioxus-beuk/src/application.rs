@@ -2,6 +2,8 @@ use beuk::ctx::RenderContext;
 
 use beuk::memory::TextureHandle;
 use dioxus::prelude::{Element, Scope, VirtualDom};
+use epaint::text::FontDefinitions;
+use epaint::Fonts;
 use quadtree_rs::area::AreaBuilder;
 use quadtree_rs::Quadtree;
 use rustc_hash::FxHashSet;
@@ -53,9 +55,16 @@ impl DioxusApp {
         ]);
 
         let focus_state = FocusState::create(&mut rdom);
+        let fonts = Arc::new(RwLock::new(Fonts::new(
+            1.0,
+            8 * 1024,
+            FontDefinitions::default(),
+        )));
+        let renderer = Renderer::new(render_context, fonts.clone());
 
         let dom = DomManager::spawn(
             rdom,
+            fonts,
             PhysicalSize {
                 width: render_context.render_swapchain.surface_resolution.width,
                 height: render_context.render_swapchain.surface_resolution.height,
@@ -65,7 +74,6 @@ impl DioxusApp {
         );
 
         let event_handler = BlitzEventHandler::new(focus_state);
-        let renderer = Renderer::new(render_context);
 
         Self {
             dom,
@@ -198,6 +206,7 @@ impl DioxusApp {
 #[allow(clippy::too_many_arguments)]
 async fn spawn_dom(
     rdom: Arc<RwLock<RealDom>>,
+    fonts: Arc<RwLock<Fonts>>,
     taffy: Arc<Mutex<Taffy>>,
     size: Arc<Mutex<PhysicalSize<u32>>>,
     app: fn(Scope) -> Element,
@@ -216,6 +225,7 @@ async fn spawn_dom(
         renderer.update(rdom.get_mut(root_id)?);
         let mut ctx = SendAnyMap::new();
         ctx.insert(taffy.clone());
+        ctx.insert(fonts.clone());
         // update the state of the real dom
         let (to_rerender, _) = rdom.update_state(ctx);
         let size = size.lock().unwrap();
@@ -267,6 +277,7 @@ async fn spawn_dom(
 
         let mut ctx = SendAnyMap::new();
         ctx.insert(taffy.clone());
+        ctx.insert(fonts.clone());
 
         // update the real dom
         let (to_rerender, _) = rdom.update_state(ctx);
@@ -319,6 +330,7 @@ struct DomManager {
 impl DomManager {
     fn spawn(
         rdom: RealDom,
+        fonts: Arc<RwLock<Fonts>>,
         size: PhysicalSize<u32>,
         app: fn(Scope) -> Element,
         proxy: EventLoopProxy<Redraw>,
@@ -341,6 +353,7 @@ impl DomManager {
                 .unwrap()
                 .block_on(spawn_dom(
                     rdom_clone,
+                    fonts,
                     taffy_clone,
                     size_clone,
                     app,

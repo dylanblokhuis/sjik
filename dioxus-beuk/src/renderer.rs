@@ -6,16 +6,16 @@ use beuk::ash::vk::{
 };
 use beuk::ctx::SamplerDesc;
 use beuk::memory::{MemoryLocation, TextureHandle};
-use beuk::pipeline::BlendState;
+use beuk::pipeline::{BlendState, MultisampleState};
 use beuk::{ctx::RenderContext, memory::PipelineHandle};
 use beuk::{
     pipeline::{GraphicsPipelineDescriptor, PrimitiveState},
     shaders::Shader,
 };
+use std::sync::{Arc, RwLock};
 
-use epaint::text::FontDefinitions;
-use epaint::textures::{TextureOptions, TexturesDelta};
-use epaint::{Primitive, TessellationOptions, TextureId, TextureManager};
+use epaint::textures::TextureOptions;
+use epaint::{Fonts, Primitive, TessellationOptions, TextureId, TextureManager};
 
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -28,14 +28,15 @@ pub struct Renderer {
     // pub vertex_buffer: Option<BufferHandle>,
     // pub index_buffer: Option<BufferHandle>,
     pub attachment_handle: TextureHandle,
+    pub multisampled_handle: Option<TextureHandle>,
     pub shapes: Vec<epaint::ClippedShape>,
-    pub fonts: epaint::Fonts,
+    pub fonts: Arc<RwLock<epaint::Fonts>>,
     pub textures: HashMap<epaint::TextureId, TextureHandle>,
     pub tex_manager: TextureManager,
 }
 
 impl Renderer {
-    pub fn new(ctx: &mut RenderContext) -> Self {
+    pub fn new(ctx: &mut RenderContext, fonts: Arc<RwLock<Fonts>>) -> Self {
         let vertex_shader = Shader::from_source_text(
             &ctx.device,
             include_str!("./shader.vert"),
@@ -53,6 +54,31 @@ impl Renderer {
         );
 
         let image_format = ctx.render_swapchain.surface_format.format;
+        let msaa = 1;
+        let multisampled_handle = if msaa != 1 {
+            Some(ctx.texture_manager.create_texture(
+                "ui_resolve",
+                &ImageCreateInfo {
+                    image_type: vk::ImageType::TYPE_2D,
+                    format: image_format,
+                    extent: vk::Extent3D {
+                        width: ctx.render_swapchain.surface_resolution.width,
+                        height: ctx.render_swapchain.surface_resolution.height,
+                        depth: 1,
+                    },
+                    samples: vk::SampleCountFlags::from_raw(msaa),
+                    usage: vk::ImageUsageFlags::COLOR_ATTACHMENT
+                        | vk::ImageUsageFlags::TRANSFER_SRC
+                        | vk::ImageUsageFlags::SAMPLED,
+                    mip_levels: 1,
+                    array_layers: 1,
+                    sharing_mode: vk::SharingMode::EXCLUSIVE,
+                    ..Default::default()
+                },
+            ))
+        } else {
+            None
+        };
         let attachment_handle = ctx.texture_manager.create_texture(
             "ui",
             &ImageCreateInfo {
@@ -65,6 +91,7 @@ impl Renderer {
                 },
                 samples: vk::SampleCountFlags::TYPE_1,
                 usage: vk::ImageUsageFlags::COLOR_ATTACHMENT
+                    | vk::ImageUsageFlags::TRANSFER_DST
                     | vk::ImageUsageFlags::TRANSFER_SRC
                     | vk::ImageUsageFlags::SAMPLED,
                 mip_levels: 1,
@@ -77,6 +104,12 @@ impl Renderer {
         ctx.texture_manager
             .get_texture_mut(attachment_handle)
             .create_view(&ctx.device);
+
+        if let Some(multisampled_handle) = multisampled_handle {
+            ctx.texture_manager
+                .get_texture_mut(multisampled_handle)
+                .create_view(&ctx.device);
+        }
 
         let pipeline_handle =
             ctx.pipeline_manager
@@ -126,16 +159,20 @@ impl Renderer {
                             .size(size_of::<PushConstants>() as u32),
                     ),
                     blend: vec![BlendState::ALPHA_BLENDING],
-                    multisample: Default::default(),
+                    multisample: MultisampleState {
+                        count: msaa,
+                        mask: !0,
+                        alpha_to_coverage_enabled: false,
+                    },
                 });
 
-        let fonts = epaint::Fonts::new(1.0, 8 * 1024, FontDefinitions::default());
-        let textures = HashMap::new();
+        let textures: HashMap<TextureId, TextureHandle> = HashMap::new();
         let tex_manager = TextureManager::default();
 
         Self {
             pipeline_handle,
             attachment_handle,
+            multisampled_handle,
             shapes: vec![],
             fonts,
             textures,
@@ -143,39 +180,9 @@ impl Renderer {
         }
     }
 
-    pub fn update_descriptor_for_texture(&self, ctx: &RenderContext, texture_id: &TextureId) {
-        let handle = self.textures.get(texture_id).unwrap();
-        let texture = ctx.texture_manager.get_texture(*handle);
-        let view = texture.view.unwrap();
-        unsafe {
-            let pipeline = ctx
-                .pipeline_manager
-                .get_graphics_pipeline(&self.pipeline_handle);
-            ctx.device.update_descriptor_sets(
-                &[vk::WriteDescriptorSet::default()
-                    .dst_set(pipeline.descriptor_sets[0])
-                    .dst_binding(0)
-                    .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                    .image_info(std::slice::from_ref(
-                        &vk::DescriptorImageInfo::default()
-                            .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                            .image_view(view)
-                            .sampler(ctx.pipeline_manager.immutable_shader_info.get_sampler(
-                                &SamplerDesc {
-                                    address_modes: vk::SamplerAddressMode::CLAMP_TO_EDGE,
-                                    mipmap_mode: vk::SamplerMipmapMode::LINEAR,
-                                    texel_filter: vk::Filter::LINEAR,
-                                },
-                            )),
-                    ))],
-                &[],
-            );
-        }
-    }
-
     pub fn render(&mut self, ctx: &mut RenderContext) {
         let texture_delta = {
-            let font_image_delta = self.fonts.font_image_delta();
+            let font_image_delta = self.fonts.read().unwrap().font_image_delta();
             if let Some(font_image_delta) = font_image_delta {
                 self.tex_manager.alloc(
                     "font".into(),
@@ -256,14 +263,15 @@ impl Renderer {
             }
         }
 
-        let texture_atlas = self.fonts.texture_atlas();
         let (font_tex_size, prepared_discs) = {
-            let atlas = texture_atlas.lock();
+            let fonts = self.fonts.read().unwrap();
+            let atlas = fonts.texture_atlas();
+            let atlas = atlas.lock();
             (atlas.size(), atlas.prepared_discs())
         };
 
         let primitives = epaint::tessellator::tessellate_shapes(
-            self.fonts.pixels_per_point(),
+            self.fonts.read().unwrap().pixels_per_point(),
             TessellationOptions::default(),
             font_tex_size,
             prepared_discs,
@@ -307,7 +315,11 @@ impl Renderer {
                 let color_attachments = &[vk::RenderingAttachmentInfo::default()
                     .image_view(
                         ctx.texture_manager
-                            .get_texture(self.attachment_handle)
+                            .get_texture(if self.multisampled_handle.is_some() {
+                                self.multisampled_handle.unwrap()
+                            } else {
+                                self.attachment_handle
+                            })
                             .view
                             .unwrap(),
                     )
@@ -360,5 +372,46 @@ impl Renderer {
             },
         );
         ctx.submit(&ctx.draw_command_buffer, ctx.draw_commands_reuse_fence);
+
+        if let Some(multisampled_handle) = self.multisampled_handle {
+            ctx.record(
+                ctx.draw_command_buffer,
+                ctx.draw_commands_reuse_fence,
+                |ctx, command_buffer| unsafe {
+                    let src_image = ctx.texture_manager.get_texture(multisampled_handle).image;
+                    let dst_image = ctx
+                        .texture_manager
+                        .get_texture(self.attachment_handle)
+                        .image;
+
+                    ctx.device.cmd_resolve_image(
+                        command_buffer,
+                        src_image,
+                        vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                        dst_image,
+                        vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                        &[vk::ImageResolve::default()
+                            .src_subresource(vk::ImageSubresourceLayers {
+                                aspect_mask: vk::ImageAspectFlags::COLOR,
+                                mip_level: 0,
+                                base_array_layer: 0,
+                                layer_count: 1,
+                            })
+                            .dst_subresource(vk::ImageSubresourceLayers {
+                                aspect_mask: vk::ImageAspectFlags::COLOR,
+                                mip_level: 0,
+                                base_array_layer: 0,
+                                layer_count: 1,
+                            })
+                            .extent(vk::Extent3D {
+                                width: ctx.render_swapchain.surface_resolution.width,
+                                height: ctx.render_swapchain.surface_resolution.height,
+                                depth: 1,
+                            })],
+                    );
+                },
+            );
+            ctx.submit(&ctx.draw_command_buffer, ctx.draw_commands_reuse_fence);
+        }
     }
 }
