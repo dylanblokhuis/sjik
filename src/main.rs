@@ -23,7 +23,9 @@ pub struct CurrentVideo {
 }
 
 fn main() {
+    #[cfg(feature = "hot-reload")]
     dioxus_hot_reload::hot_reload_init!();
+
     std::env::set_var("RUST_LOG", "info");
     simple_logger::SimpleLogger::new().env().init().unwrap();
     let event_loop = EventLoop::<Redraw>::with_user_event();

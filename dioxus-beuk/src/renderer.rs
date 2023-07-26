@@ -295,7 +295,6 @@ impl Renderer {
                         vk::BufferUsageFlags::INDEX_BUFFER,
                         MemoryLocation::CpuToGpu,
                     );
-                    println!("indices: {:?}", mesh.texture_id);
                     draw_list.push((
                         vertex_buffer,
                         index_buffer,

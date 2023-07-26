@@ -98,6 +98,7 @@ impl DioxusApp {
 
     pub fn render(&mut self, render_context: &mut RenderContext) {
         self.renderer.shapes.clear();
+
         self.dom.render(&mut self.renderer);
         self.renderer.render(render_context);
         // After we render, we need to update the quadtree to reflect the new positions of the nodes
@@ -461,6 +462,7 @@ impl DirtyNodes {
 struct DioxusRenderer {
     vdom: VirtualDom,
     dioxus_state: DioxusState,
+    #[cfg(feature = "hot-reload")]
     hot_reload_rx: tokio::sync::mpsc::UnboundedReceiver<dioxus_hot_reload::HotReloadMsg>,
 }
 
@@ -474,6 +476,8 @@ impl DioxusRenderer {
         DioxusRenderer {
             vdom,
             dioxus_state,
+
+            #[cfg(feature = "hot-reload")]
             hot_reload_rx: {
                 let (hot_reload_tx, hot_reload_rx) =
                     tokio::sync::mpsc::unbounded_channel::<dioxus_hot_reload::HotReloadMsg>();
@@ -505,18 +509,14 @@ impl DioxusRenderer {
     }
 
     fn poll_async(&mut self) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + '_>> {
+        #[cfg(feature = "hot-reload")]
         return Box::pin(async {
             let hot_reload_wait = self.hot_reload_rx.recv();
             let mut hot_reload_msg = None;
             let wait_for_work = self.vdom.wait_for_work();
             tokio::select! {
                 Some(msg) = hot_reload_wait => {
-                    // #[cfg(all(feature = "hot-reload", debug_assertions))]
-                    // {
-                        hot_reload_msg = Some(msg);
-                    // }
-                    // #[cfg(not(all(feature = "hot-reload", debug_assertions)))]
-                    // let () = msg;
+                    hot_reload_msg = Some(msg);
                 }
                 _ = wait_for_work => {}
             }
@@ -533,6 +533,7 @@ impl DioxusRenderer {
             }
         });
 
-        // Box::pin(self.vdom.wait_for_work())
+        #[cfg(not(feature = "hot-reload"))]
+        Box::pin(self.vdom.wait_for_work())
     }
 }
