@@ -130,14 +130,8 @@ impl Renderer {
                 });
 
         let fonts = epaint::Fonts::new(1.0, 8 * 1024, FontDefinitions::default());
-
-        // println!("{:?}", fonts.families().first().unwrap().);
-
-        let mut textures = HashMap::new();
-        // textures.insert(TextureId::default(), font_texture);
-        let mut tex_manager = TextureManager::default();
-
-        // tex_manager.set(TextureId::default(), )
+        let textures = HashMap::new();
+        let tex_manager = TextureManager::default();
 
         Self {
             pipeline_handle,
@@ -180,13 +174,8 @@ impl Renderer {
     }
 
     pub fn render(&mut self, ctx: &mut RenderContext) {
-        println!("!!!!!!!!!!!!!!!!!!!!!!!!!! rendering");
-        self.fonts
-            .begin_frame(self.fonts.pixels_per_point(), self.fonts.max_texture_side());
-
         let texture_delta = {
             let font_image_delta = self.fonts.font_image_delta();
-            println!("font_image_delta: {:?}", font_image_delta.is_some());
             if let Some(font_image_delta) = font_image_delta {
                 self.tex_manager.alloc(
                     "font".into(),
@@ -203,8 +192,8 @@ impl Renderer {
             texture_delta.set.len(),
             texture_delta.free.len()
         );
-        let font_texture = {
-            let (id, delta) = texture_delta.set.first().unwrap();
+
+        for (id, delta) in texture_delta.set {
             let delta = delta.clone();
             let handle = ctx.texture_manager.create_texture(
                 "fonts",
@@ -265,15 +254,7 @@ impl Renderer {
                     &[],
                 );
             }
-
-            handle
-        };
-
-        println!(
-            "texture_delta: {:?} {:?}",
-            texture_delta.set.len(),
-            texture_delta.free.len()
-        );
+        }
 
         let texture_atlas = self.fonts.texture_atlas();
         let (font_tex_size, prepared_discs) = {
