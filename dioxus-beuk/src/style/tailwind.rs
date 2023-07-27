@@ -28,6 +28,10 @@ pub(crate) struct Tailwind {
     pub node: Option<Node>,
 }
 
+/**
+ * This converts all the tailwind classes to Taffy layouts and also
+ *  handles the visual styling and saves them in the Tailwind struct
+ */
 #[partial_derive_state]
 impl State for Tailwind {
     type ChildDependencies = (Self,);
@@ -53,6 +57,8 @@ impl State for Tailwind {
         let mut changed = false;
 
         if let Some(text) = node_view.text() {
+            // we just need the size of this shape for the layout
+            // hence no colors being used
             let shape = epaint::Shape::text(
                 &state.fonts.read().unwrap(),
                 epaint::Pos2 { x: 0.0, y: 0.0 },
@@ -90,6 +96,7 @@ impl State for Tailwind {
                 changed = true;
             }
 
+            // text cannot have children, so we can return early
             return changed;
         }
 
