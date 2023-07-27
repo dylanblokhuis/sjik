@@ -9,7 +9,7 @@ edition = "2021"
 dioxus = { git = "https://github.com/DioxusLabs/dioxus/" }
 dioxus-native-core = { git = "https://github.com/DioxusLabs/dioxus/", features = ["dioxus"] }
 dioxus-native-core-macro = { git = "https://github.com/DioxusLabs/dioxus/" }
-taffy = "0.3.12"
+taffy = { git = "https://github.com/DioxusLabs/taffy/" }
 tokio = { version = "1.25.0", features = ["sync", "rt", "macros"] }
 tao = { version = "0.21.0", features = ["serde"] }
 raw-window-handle = "0.5.0"

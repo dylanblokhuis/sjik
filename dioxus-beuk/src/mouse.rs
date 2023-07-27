@@ -15,7 +15,7 @@ fn find_node_on_point_recursive(
     taffy: &Taffy,
     dom: &RealDom,
     mouse_pos: epaint::Pos2,
-    node: taffy::node::Node,
+    node: taffy::tree::NodeId,
 ) -> Option<NodeId> {
     let layout = taffy.layout(node).unwrap();
 
@@ -49,7 +49,7 @@ fn find_node_on_point_recursive(
 }
 
 /// Find the DOM element that contains the given taffy node
-fn find_dom_element_recursive(node: NodeRef, taffy_node: taffy::node::Node) -> Option<NodeId> {
+fn find_dom_element_recursive(node: NodeRef, taffy_node: taffy::tree::NodeId) -> Option<NodeId> {
     let Some(tw) = node.get::<Tailwind>() else {
         return None;
     };

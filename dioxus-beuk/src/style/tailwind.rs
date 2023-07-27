@@ -25,7 +25,7 @@ pub(crate) struct Tailwind {
     pub background_color: Color32,
     pub border: Border,
     pub style: Style,
-    pub node: Option<Node>,
+    pub node: Option<taffy::tree::NodeId>,
 }
 
 /**
@@ -72,8 +72,8 @@ impl State for Tailwind {
 
             let style = Style {
                 size: Size {
-                    width: Dimension::Points(width),
-                    height: Dimension::Points(height),
+                    width: Dimension::Length(width),
+                    height: Dimension::Length(height),
                 },
                 ..Default::default()
             };
@@ -146,7 +146,7 @@ impl State for Tailwind {
             }
 
             if let Some(class) = class.strip_prefix("p-") {
-                let padding = LengthPercentage::Points(class.parse::<f32>().unwrap());
+                let padding = LengthPercentage::Length(class.parse::<f32>().unwrap());
                 style.padding = Rect {
                     top: padding,
                     bottom: padding,
@@ -156,13 +156,13 @@ impl State for Tailwind {
             }
 
             if let Some(class) = class.strip_prefix("py-") {
-                let padding = LengthPercentage::Points(class.parse::<f32>().unwrap());
+                let padding = LengthPercentage::Length(class.parse::<f32>().unwrap());
                 style.padding.top = padding;
                 style.padding.bottom = padding;
             }
 
             if let Some(class) = class.strip_prefix("px-") {
-                let padding = LengthPercentage::Points(class.parse::<f32>().unwrap());
+                let padding = LengthPercentage::Length(class.parse::<f32>().unwrap());
                 style.padding.left = padding;
                 style.padding.right = padding;
             }
@@ -284,7 +284,7 @@ impl Tailwind {
 
                     Dimension::Percent(class.strip_suffix('%').unwrap().parse::<f32>().unwrap())
                 } else {
-                    Dimension::Points(class.parse::<f32>().unwrap())
+                    Dimension::Length(class.parse::<f32>().unwrap())
                 }
             }
         }

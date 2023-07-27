@@ -171,8 +171,8 @@ async fn spawn_dom(
 
         let mut style = locked_taffy.style(root_taffy_node).unwrap().clone();
         style.size = Size {
-            width: Dimension::Points(width),
-            height: Dimension::Points(height),
+            width: Dimension::Length(width),
+            height: Dimension::Length(height),
         };
         locked_taffy.set_style(root_taffy_node, style).unwrap();
         locked_taffy.compute_layout(root_taffy_node, size).unwrap();
@@ -222,8 +222,8 @@ async fn spawn_dom(
             let root_taffy_node = root_node_layout.node.unwrap();
             let mut style = taffy.style(root_taffy_node).unwrap().clone();
             let new_size = Size {
-                width: Dimension::Points(width),
-                height: Dimension::Points(height),
+                width: Dimension::Length(width),
+                height: Dimension::Length(height),
             };
             if style.size != new_size {
                 style.size = new_size;

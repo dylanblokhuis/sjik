@@ -1003,7 +1003,7 @@ dependencies = [
 [[package]]
 name = "dioxus"
 version = "0.3.2"
-source = "git+https://github.com/DioxusLabs/dioxus/#5e3451a6f20d69a5481edb01f219c5b0cdf912e0"
+source = "git+https://github.com/DioxusLabs/dioxus/#cfd62e274e9f4c52d8e0bae7cd138aef7c0e54f3"
 dependencies = [
  "dioxus-core",
  "dioxus-core-macro",
@@ -1016,7 +1016,7 @@ dependencies = [
 [[package]]
 name = "dioxus-core"
 version = "0.3.3"
-source = "git+https://github.com/DioxusLabs/dioxus/#5e3451a6f20d69a5481edb01f219c5b0cdf912e0"
+source = "git+https://github.com/DioxusLabs/dioxus/#cfd62e274e9f4c52d8e0bae7cd138aef7c0e54f3"
 dependencies = [
  "bumpalo",
  "futures-channel",
@@ -1032,7 +1032,7 @@ dependencies = [
 [[package]]
 name = "dioxus-core-macro"
 version = "0.3.0"
-source = "git+https://github.com/DioxusLabs/dioxus/#5e3451a6f20d69a5481edb01f219c5b0cdf912e0"
+source = "git+https://github.com/DioxusLabs/dioxus/#cfd62e274e9f4c52d8e0bae7cd138aef7c0e54f3"
 dependencies = [
  "dioxus-rsx",
  "proc-macro2",
@@ -1043,7 +1043,7 @@ dependencies = [
 [[package]]
 name = "dioxus-hooks"
 version = "0.3.1"
-source = "git+https://github.com/DioxusLabs/dioxus/#5e3451a6f20d69a5481edb01f219c5b0cdf912e0"
+source = "git+https://github.com/DioxusLabs/dioxus/#cfd62e274e9f4c52d8e0bae7cd138aef7c0e54f3"
 dependencies = [
  "debug-cell",
  "dioxus-core",
@@ -1055,7 +1055,7 @@ dependencies = [
 [[package]]
 name = "dioxus-hot-reload"
 version = "0.1.1"
-source = "git+https://github.com/DioxusLabs/dioxus/#5e3451a6f20d69a5481edb01f219c5b0cdf912e0"
+source = "git+https://github.com/DioxusLabs/dioxus/#cfd62e274e9f4c52d8e0bae7cd138aef7c0e54f3"
 dependencies = [
  "chrono",
  "dioxus-core",
@@ -1073,7 +1073,7 @@ dependencies = [
 [[package]]
 name = "dioxus-html"
 version = "0.3.1"
-source = "git+https://github.com/DioxusLabs/dioxus/#5e3451a6f20d69a5481edb01f219c5b0cdf912e0"
+source = "git+https://github.com/DioxusLabs/dioxus/#cfd62e274e9f4c52d8e0bae7cd138aef7c0e54f3"
 dependencies = [
  "async-channel",
  "async-trait",
@@ -1091,7 +1091,7 @@ dependencies = [
 [[package]]
 name = "dioxus-native-core"
 version = "0.2.0"
-source = "git+https://github.com/DioxusLabs/dioxus/#5e3451a6f20d69a5481edb01f219c5b0cdf912e0"
+source = "git+https://github.com/DioxusLabs/dioxus/#cfd62e274e9f4c52d8e0bae7cd138aef7c0e54f3"
 dependencies = [
  "anymap",
  "dashmap",
@@ -1108,7 +1108,7 @@ dependencies = [
 [[package]]
 name = "dioxus-native-core-macro"
 version = "0.3.0"
-source = "git+https://github.com/DioxusLabs/dioxus/#5e3451a6f20d69a5481edb01f219c5b0cdf912e0"
+source = "git+https://github.com/DioxusLabs/dioxus/#cfd62e274e9f4c52d8e0bae7cd138aef7c0e54f3"
 dependencies = [
  "quote",
  "syn 2.0.27",
@@ -1117,7 +1117,7 @@ dependencies = [
 [[package]]
 name = "dioxus-rsx"
 version = "0.0.3"
-source = "git+https://github.com/DioxusLabs/dioxus/#5e3451a6f20d69a5481edb01f219c5b0cdf912e0"
+source = "git+https://github.com/DioxusLabs/dioxus/#cfd62e274e9f4c52d8e0bae7cd138aef7c0e54f3"
 dependencies = [
  "dioxus-core",
  "internment",
@@ -1837,12 +1837,9 @@ dependencies = [
 
 [[package]]
 name = "grid"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0634107a3a005070dd73e27e74ecb691a94e9e5ba7829f434db7fbf73a6b5c47"
-dependencies = [
- "no-std-compat",
-]
+checksum = "eec1c01eb1de97451ee0d60de7d81cf1e72aabefb021616027f3d1c3ec1c723c"
 
 [[package]]
 name = "gtk"
@@ -2550,12 +2547,6 @@ dependencies = [
  "memoffset 0.7.1",
  "static_assertions",
 ]
-
-[[package]]
-name = "no-std-compat"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b93853da6d84c2e3c7d730d6473e8817692dd89be387eb01b94d7f108ecb5b8c"
 
 [[package]]
 name = "nohash-hasher"
@@ -3300,9 +3291,9 @@ dependencies = [
 
 [[package]]
 name = "serde"
-version = "1.0.176"
+version = "1.0.177"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76dc28c9523c5d70816e393136b86d48909cfb27cecaa902d338c19ed47164dc"
+checksum = "63ba2516aa6bf82e0b19ca8b50019d52df58455d3cf9bdaf6315225fdd0c560a"
 dependencies = [
  "serde_derive",
 ]
@@ -3328,9 +3319,9 @@ dependencies = [
 
 [[package]]
 name = "serde_derive"
-version = "1.0.176"
+version = "1.0.177"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4e7b8c5dc823e3b90651ff1d3808419cd14e5ad76de04feaf37da114e7a306f"
+checksum = "401797fe7833d72109fedec6bfcbe67c0eed9b99772f26eb8afd261f0abc6fd3"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3647,9 +3638,8 @@ dependencies = [
 
 [[package]]
 name = "taffy"
-version = "0.3.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3540ec65df399929a04a485feb50144475735920cc47eaf8eba09c70b1df4055"
+version = "0.3.11"
+source = "git+https://github.com/DioxusLabs/taffy/#25ffaee23176000364b17e1b5b29f361a764890a"
 dependencies = [
  "arrayvec",
  "grid",
