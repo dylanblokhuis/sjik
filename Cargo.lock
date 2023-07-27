@@ -3911,7 +3911,6 @@ dependencies = [
  "bytemuck",
  "cpal 0.15.2",
  "crossbeam-channel",
- "crossbeam-utils",
  "dioxus",
  "dioxus-hot-reload",
  "dioxus_beuk",
