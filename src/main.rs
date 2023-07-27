@@ -23,6 +23,15 @@ pub struct CurrentVideo {
 }
 
 fn main() {
+    #[cfg(feature = "tracing")]
+    {
+        use tracing_subscriber::layer::SubscriberExt;
+        tracing::subscriber::set_global_default(
+            tracing_subscriber::registry().with(tracing_tracy::TracyLayer::new()),
+        )
+        .expect("set up the subscriber");
+    }
+
     #[cfg(feature = "hot-reload")]
     dioxus_hot_reload::hot_reload_init!();
 
@@ -49,7 +58,7 @@ fn main() {
         let current_video = current_video.clone();
 
         move || {
-            let mut media_decoder = MediaDecoder::new("/Users/dylanblokhuis/Downloads/20190207_Profield_Kart_V2.mp4", move|frame| {
+            let mut media_decoder = MediaDecoder::new("http://192.168.178.49:32400/library/parts/1720/1689874581/file.mkv?download=1&X-Plex-Token=J3j74Py7w49SsXrq3ThS", move|frame| {
                 tx.send(frame).unwrap();
             });
             let (width, height) = media_decoder.get_video_size();

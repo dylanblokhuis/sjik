@@ -4,7 +4,7 @@ use dioxus_native_core::prelude::*;
 use dioxus_native_core_macro::partial_derive_state;
 
 use epaint::emath::Align;
-use epaint::{FontId, Color32, Rounding};
+use epaint::{Color32, FontId, Rounding};
 use shipyard::Component;
 use taffy::prelude::*;
 use taffy::style::Style;
@@ -52,7 +52,6 @@ impl State for Tailwind {
     ) -> bool {
         let taffy: &std::sync::Arc<std::sync::Mutex<Taffy>> = context.get().unwrap();
         let state: &RendererState = context.get().unwrap();
-        // let text_context: &Arc<Mutex<TextContext>> = context.get().unwrap();
         let mut taffy = taffy.lock().unwrap();
         let mut changed = false;
 
@@ -301,12 +300,7 @@ impl Tailwind {
                 "black" => Some(Color32::from_rgba_unmultiplied(0, 0, 0, 255)),
                 _ => colors.get(color_and_variant[0]).map(|c| {
                     let (_, variant) = c.iter().next().unwrap();
-                    Color32::from_rgba_unmultiplied(
-                        variant[0],
-                        variant[1],
-                        variant[2],
-                        variant[3],
-                    )
+                    Color32::from_rgba_unmultiplied(variant[0], variant[1], variant[2], variant[3])
                 }),
             };
         }
@@ -323,12 +317,7 @@ impl Tailwind {
 
         let [r, g, b, a] = variant_color;
 
-        Some(Color32::from_rgba_unmultiplied(
-            *r,
-            *g,
-            *b,
-            *a,
-        ))
+        Some(Color32::from_rgba_unmultiplied(*r, *g, *b, *a))
     }
 }
 

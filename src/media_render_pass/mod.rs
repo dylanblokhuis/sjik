@@ -576,6 +576,7 @@ void main() {
         ctx.submit(&ctx.setup_command_buffer, ctx.setup_commands_reuse_fence);
     }
 
+    #[tracing::instrument(name = "MediaRenderPass::draw", skip_all)]
     pub fn draw(&self, ctx: &mut RenderContext, current_video: &CurrentVideo, frame: &[u8]) {
         let buffer = ctx
             .buffer_manager

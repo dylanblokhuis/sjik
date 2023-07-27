@@ -157,7 +157,7 @@ impl MediaDecoder {
         };
 
         let (video_producer, mut video_consumer) = HeapRb::<(i64, Vec<u8>)>::new(10).split();
-        let (audio_producer, audio_consumer) = HeapRb::<(i64, f32)>::new(50 * 1024).split();
+        let (audio_producer, audio_consumer) = HeapRb::<(i64, f32)>::new(50 * 1024 * 1024).split();
         let audio_clock = std::sync::Arc::new(AtomicI64::new(0));
 
         std::thread::spawn({

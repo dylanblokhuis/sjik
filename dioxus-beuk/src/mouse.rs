@@ -1,64 +1,89 @@
 use dioxus_native_core::prelude::*;
 use dioxus_native_core_macro::partial_derive_state;
 use once_cell::sync::Lazy;
-use quadtree_rs::{area::AreaBuilder, Quadtree};
 use rustc_hash::FxHashSet;
 use shipyard::Component;
-use taffy::{prelude::Size, Taffy};
+use taffy::Taffy;
 
 use crate::{
     render::{get_abs_pos, get_shape},
     style::Tailwind,
 };
 
-pub(crate) fn get_hovered(
+/// Find the taffy node that contains the given point
+fn find_node_on_point_recursive(
     taffy: &Taffy,
     dom: &RealDom,
-    viewport_size: &Size<u32>,
     mouse_pos: epaint::Pos2,
-    quadtree: &Quadtree<u64, NodeId>,
+    node: taffy::node::Node,
 ) -> Option<NodeId> {
-    quadtree
-        .query(
-            AreaBuilder::default()
-                .anchor((mouse_pos.x as u64, mouse_pos.y as u64).into())
-                .dimensions((1, 1))
-                .build()
-                .unwrap(),
-        )
-        .find(|entry| {
-            // filter out nodes that are not actually hovered
-            if let Some(node) = dom.get(*entry.value_ref()) {
-                node.get::<MouseEffected>()
-                    .filter(|effected| effected.0)
-                    .is_some()
-                    && check_hovered(taffy, node, viewport_size, mouse_pos)
-            } else {
-                false
+    let layout = taffy.layout(node).unwrap();
+
+    if mouse_pos.x >= layout.location.x
+        && mouse_pos.x <= layout.location.x + layout.size.width
+        && mouse_pos.y >= layout.location.y
+        && mouse_pos.y <= layout.location.y + layout.size.height
+    {
+        let entity_id = find_dom_element_recursive(dom.get(dom.root_id()).unwrap(), node).unwrap();
+        let entity = dom.get(entity_id).unwrap();
+        let is_mouse_effected = entity
+            .get::<MouseEffected>()
+            .filter(|effected| effected.0)
+            .is_some();
+
+        if is_mouse_effected {
+            // && check_hovered(taffy, entity, mouse_pos) {
+            return Some(entity.id());
+        }
+
+        let children = taffy.children(node).unwrap();
+        for child in children {
+            if let Some(found) = find_node_on_point_recursive(taffy, dom, mouse_pos, child) {
+                return Some(found);
             }
-        })
-        .map(|entry| *entry.value_ref())
+        }
+    }
+
+    // point is not inside the current node
+    None
 }
 
-pub(crate) fn check_hovered(
-    taffy: &Taffy,
-    node: NodeRef,
-    viewport_size: &Size<u32>,
-    mouse_pos: epaint::Pos2,
-) -> bool {
+/// Find the DOM element that contains the given taffy node
+fn find_dom_element_recursive(node: NodeRef, taffy_node: taffy::node::Node) -> Option<NodeId> {
+    let Some(tw) = node.get::<Tailwind>() else {
+        return None;
+    };
+
+    if tw.node.unwrap() == taffy_node {
+        return Some(node.id());
+    }
+
+    for child in node.children().iter() {
+        let found = find_dom_element_recursive(*child, taffy_node);
+        if found.is_some() {
+            return found;
+        }
+    }
+
+    None
+}
+
+pub(crate) fn get_hovered(taffy: &Taffy, dom: &RealDom, mouse_pos: epaint::Pos2) -> Option<NodeId> {
+    let root_node = dom.get(dom.root_id()).unwrap();
+    let tailwind = root_node.get::<Tailwind>().unwrap();
+
+    find_node_on_point_recursive(taffy, dom, mouse_pos, tailwind.node.unwrap())
+}
+
+pub(crate) fn check_hovered(taffy: &Taffy, node: NodeRef, mouse_pos: epaint::Pos2) -> bool {
     let taffy_node = node.get::<Tailwind>().unwrap().node.unwrap();
     let node_layout = taffy.layout(taffy_node).unwrap();
-    get_shape(
-        node_layout,
-        node,
-        viewport_size,
-        get_abs_pos(*node_layout, taffy, node),
-    )
-    .visual_bounding_rect()
-    .contains(epaint::Pos2 {
-        x: mouse_pos.x as f32,
-        y: mouse_pos.y as f32,
-    })
+    get_shape(node_layout, node, get_abs_pos(*node_layout, taffy, node))
+        .visual_bounding_rect()
+        .contains(epaint::Pos2 {
+            x: mouse_pos.x,
+            y: mouse_pos.y,
+        })
 }
 
 #[derive(Debug, Default, PartialEq, Clone, Component)]
@@ -86,6 +111,7 @@ impl State for MouseEffected {
                 .flatten()
                 .any(|event| MOUSE_EVENTS.contains(&event)),
         );
+
         if *self != new {
             *self = new;
             true

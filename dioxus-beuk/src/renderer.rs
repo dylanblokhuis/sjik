@@ -179,6 +179,7 @@ impl Renderer {
         }
     }
 
+    #[tracing::instrument(name = "Renderer::render", skip_all)]
     pub fn render(&mut self, ctx: &mut RenderContext) {
         let texture_delta = {
             let font_image_delta = self.state.fonts.read().unwrap().font_image_delta();
@@ -281,7 +282,6 @@ impl Renderer {
         for (index, primitive) in primitives.iter().enumerate() {
             match &primitive.primitive {
                 Primitive::Mesh(mesh) => {
-                    println!("mesh: {:?}", mesh.texture_id);
                     let vertex_buffer = ctx.buffer_manager.create_buffer_with_data(
                         &format!("vertices_{}", index),
                         bytemuck::cast_slice(&mesh.vertices),
