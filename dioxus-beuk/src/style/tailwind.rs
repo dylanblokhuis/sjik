@@ -4,11 +4,7 @@ use dioxus_native_core::prelude::*;
 use dioxus_native_core_macro::partial_derive_state;
 
 use epaint::emath::Align;
-use epaint::{FontId, Fonts};
-use lightningcss::properties::border::{BorderColor, BorderSideWidth, BorderWidth};
-use lightningcss::properties::border_radius::BorderRadius;
-use lightningcss::values::color::CssColor;
-use lightningcss::values::size::Size2D;
+use epaint::{FontId, Color32, Rounding};
 use shipyard::Component;
 use taffy::prelude::*;
 use taffy::style::Style;
@@ -18,15 +14,15 @@ use crate::application::RendererState;
 type Colors = HashMap<&'static str, HashMap<&'static str, [u8; 4]>>;
 #[derive(Clone, PartialEq, Debug, Component)]
 pub(crate) struct Border {
-    pub colors: BorderColor,
-    pub width: BorderWidth,
-    pub radius: BorderRadius,
+    pub color: Color32,
+    pub width: f32,
+    pub radius: Rounding,
 }
 
 #[derive(Clone, PartialEq, Debug, Component)]
 pub(crate) struct Tailwind {
-    pub color: CssColor,
-    pub background_color: CssColor,
+    pub color: Color32,
+    pub background_color: Color32,
     pub border: Border,
     pub style: Style,
     pub node: Option<Node>,
@@ -167,67 +163,18 @@ impl State for Tailwind {
 
             if let Some(class) = class.strip_prefix("rounded-") {
                 let value = class.parse::<f32>().unwrap();
-                self.border.radius.bottom_left = Size2D(
-                    lightningcss::values::percentage::DimensionPercentage::Dimension(
-                        lightningcss::values::length::LengthValue::Px(value),
-                    ),
-                    lightningcss::values::percentage::DimensionPercentage::Dimension(
-                        lightningcss::values::length::LengthValue::Px(value),
-                    ),
-                );
-                self.border.radius.bottom_right = Size2D(
-                    lightningcss::values::percentage::DimensionPercentage::Dimension(
-                        lightningcss::values::length::LengthValue::Px(value),
-                    ),
-                    lightningcss::values::percentage::DimensionPercentage::Dimension(
-                        lightningcss::values::length::LengthValue::Px(value),
-                    ),
-                );
-                self.border.radius.top_left = Size2D(
-                    lightningcss::values::percentage::DimensionPercentage::Dimension(
-                        lightningcss::values::length::LengthValue::Px(value),
-                    ),
-                    lightningcss::values::percentage::DimensionPercentage::Dimension(
-                        lightningcss::values::length::LengthValue::Px(value),
-                    ),
-                );
-                self.border.radius.top_right = Size2D(
-                    lightningcss::values::percentage::DimensionPercentage::Dimension(
-                        lightningcss::values::length::LengthValue::Px(value),
-                    ),
-                    lightningcss::values::percentage::DimensionPercentage::Dimension(
-                        lightningcss::values::length::LengthValue::Px(value),
-                    ),
-                );
+                self.border.radius.ne = value;
+                self.border.radius.nw = value;
+                self.border.radius.se = value;
+                self.border.radius.sw = value;
             }
 
             if let Some(class) = class.strip_prefix("border-") {
                 if let Some(color) = Self::handle_color(class, &colors) {
-                    self.border.colors.top = color.clone();
-                    self.border.colors.bottom = color.clone();
-                    self.border.colors.left = color.clone();
-                    self.border.colors.right = color;
+                    self.border.color = color;
                 } else {
                     let value = class.parse::<f32>().unwrap();
-                    self.border.width.top =
-                        BorderSideWidth::Length(lightningcss::values::length::Length::Value(
-                            lightningcss::values::length::LengthValue::Px(value),
-                        ));
-
-                    self.border.width.bottom =
-                        BorderSideWidth::Length(lightningcss::values::length::Length::Value(
-                            lightningcss::values::length::LengthValue::Px(value),
-                        ));
-
-                    self.border.width.left =
-                        BorderSideWidth::Length(lightningcss::values::length::Length::Value(
-                            lightningcss::values::length::LengthValue::Px(value),
-                        ));
-
-                    self.border.width.right =
-                        BorderSideWidth::Length(lightningcss::values::length::Length::Value(
-                            lightningcss::values::length::LengthValue::Px(value),
-                        ));
+                    self.border.width = value;
                 }
             }
 
@@ -305,30 +252,12 @@ impl Default for Tailwind {
     fn default() -> Self {
         Self {
             border: Border {
-                colors: BorderColor {
-                    top: CssColor::default(),
-                    right: CssColor::default(),
-                    bottom: CssColor::default(),
-                    left: CssColor::default(),
-                },
-                radius: BorderRadius::default(),
-                width: BorderWidth {
-                    top: BorderSideWidth::Length(lightningcss::values::length::Length::Value(
-                        lightningcss::values::length::LengthValue::Px(0.0),
-                    )),
-                    right: BorderSideWidth::Length(lightningcss::values::length::Length::Value(
-                        lightningcss::values::length::LengthValue::Px(0.0),
-                    )),
-                    bottom: BorderSideWidth::Length(lightningcss::values::length::Length::Value(
-                        lightningcss::values::length::LengthValue::Px(0.0),
-                    )),
-                    left: BorderSideWidth::Length(lightningcss::values::length::Length::Value(
-                        lightningcss::values::length::LengthValue::Px(0.0),
-                    )),
-                },
+                color: Color32::TRANSPARENT,
+                radius: Rounding::none(),
+                width: 0.0,
             },
-            background_color: CssColor::default(),
-            color: CssColor::default(),
+            background_color: Color32::TRANSPARENT,
+            color: Color32::WHITE,
             node: None,
             style: Style::default(),
         }
@@ -355,38 +284,22 @@ impl Tailwind {
         }
     }
 
-    fn handle_color(class: &str, colors: &Colors) -> Option<CssColor> {
+    fn handle_color(class: &str, colors: &Colors) -> Option<Color32> {
         // check check color then variant
         let color_and_variant: Vec<&str> = class.split('-').collect();
         if color_and_variant.len() != 2 {
             return match color_and_variant[0] {
-                "transparent" => Some(CssColor::RGBA(cssparser::RGBA {
-                    red: 0,
-                    green: 0,
-                    blue: 0,
-                    alpha: 0,
-                })),
-
-                "white" => Some(CssColor::RGBA(cssparser::RGBA {
-                    red: 255,
-                    green: 255,
-                    blue: 255,
-                    alpha: 255,
-                })),
-                "black" => Some(CssColor::RGBA(cssparser::RGBA {
-                    red: 0,
-                    green: 0,
-                    blue: 0,
-                    alpha: 255,
-                })),
+                "transparent" => Some(Color32::from_rgba_unmultiplied(0, 0, 0, 0)),
+                "white" => Some(Color32::from_rgba_unmultiplied(255, 255, 255, 255)),
+                "black" => Some(Color32::from_rgba_unmultiplied(0, 0, 0, 255)),
                 _ => colors.get(color_and_variant[0]).map(|c| {
                     let (_, variant) = c.iter().next().unwrap();
-                    CssColor::RGBA(cssparser::RGBA {
-                        red: variant[0],
-                        green: variant[1],
-                        blue: variant[2],
-                        alpha: variant[3],
-                    })
+                    Color32::from_rgba_unmultiplied(
+                        variant[0],
+                        variant[1],
+                        variant[2],
+                        variant[3],
+                    )
                 }),
             };
         }
@@ -403,12 +316,12 @@ impl Tailwind {
 
         let [r, g, b, a] = variant_color;
 
-        Some(CssColor::RGBA(cssparser::RGBA {
-            red: *r,
-            green: *g,
-            blue: *b,
-            alpha: *a,
-        }))
+        Some(Color32::from_rgba_unmultiplied(
+            *r,
+            *g,
+            *b,
+            *a,
+        ))
     }
 }
 

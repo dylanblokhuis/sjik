@@ -12,7 +12,6 @@ mod prevent_default;
 mod render;
 mod renderer;
 mod style;
-mod util;
 
 #[derive(Debug)]
 pub struct Redraw;

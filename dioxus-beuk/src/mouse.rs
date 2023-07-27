@@ -1,7 +1,6 @@
 use dioxus_native_core::prelude::*;
 use dioxus_native_core_macro::partial_derive_state;
 use once_cell::sync::Lazy;
-use peniko::kurbo::Point;
 use quadtree_rs::{area::AreaBuilder, Quadtree};
 use rustc_hash::FxHashSet;
 use shipyard::Component;
@@ -16,7 +15,7 @@ pub(crate) fn get_hovered(
     taffy: &Taffy,
     dom: &RealDom,
     viewport_size: &Size<u32>,
-    mouse_pos: Point,
+    mouse_pos: epaint::Pos2,
     quadtree: &Quadtree<u64, NodeId>,
 ) -> Option<NodeId> {
     quadtree
@@ -45,7 +44,7 @@ pub(crate) fn check_hovered(
     taffy: &Taffy,
     node: NodeRef,
     viewport_size: &Size<u32>,
-    mouse_pos: Point,
+    mouse_pos: epaint::Pos2,
 ) -> bool {
     let taffy_node = node.get::<Tailwind>().unwrap().node.unwrap();
     let node_layout = taffy.layout(taffy_node).unwrap();

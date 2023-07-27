@@ -1,5 +1,4 @@
 use keyboard_types::Code;
-use peniko::kurbo::Point;
 use quadtree_rs::Quadtree;
 use std::{
     any::Any,
@@ -248,7 +247,7 @@ impl BlitzEventHandler {
                         position,
                         ..
                     } => {
-                        let pos = Point::new(position.x, position.y);
+                        let pos = epaint::Pos2::new(position.x as f32, position.y as f32);
                         let hovered = get_hovered(taffy, rdom, viewport_size, pos, quadtree);
                         let (mouse_x, mouse_y) = (pos.x as i32, pos.y as i32);
                         let screen_point = ScreenPoint::new(mouse_x as f64, mouse_y as f64);
