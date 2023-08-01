@@ -1,6 +1,7 @@
 use beuk::ctx::RenderContext;
 
-use beuk::memory::TextureHandle;
+use beuk::memory2::ResourceHandle;
+use beuk::texture::Texture;
 use dioxus::prelude::{Element, Scope, VirtualDom};
 use epaint::text::FontDefinitions;
 use epaint::{Fonts, TextureManager};
@@ -65,12 +66,13 @@ impl DioxusApp {
         };
         let renderer = Renderer::new(render_context, state.clone());
 
+        let swapchain = render_context.get_swapchain();
         let dom = DomManager::spawn(
             rdom,
             state,
             PhysicalSize {
-                width: render_context.render_swapchain.surface_resolution.width,
-                height: render_context.render_swapchain.surface_resolution.height,
+                width: swapchain.surface_resolution.width,
+                height: swapchain.surface_resolution.height,
             },
             app,
             proxy,
@@ -85,8 +87,8 @@ impl DioxusApp {
         }
     }
 
-    pub fn get_attachment_handle(&self) -> TextureHandle {
-        self.renderer.attachment_handle
+    pub fn get_attachment_handle(&self) -> &ResourceHandle<Texture> {
+        &self.renderer.attachment_handle
     }
 
     #[tracing::instrument(name = "DioxusApp::render", skip_all)]

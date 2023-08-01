@@ -100,8 +100,8 @@ fn main() {
                 let present_index = ctx.acquire_present_index();
                 present_node.combine_and_draw(
                     &ctx,
-                    application.get_attachment_handle(),
-                    media_node.attachment,
+                    application.get_attachment_handle().clone(),
+                    media_node.attachment.clone(),
                     present_index,
                 );
                 ctx.present_submit(present_index);

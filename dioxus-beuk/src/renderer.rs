@@ -4,18 +4,20 @@ use std::mem::size_of;
 use beuk::ash::vk::{
     self, ImageCreateInfo, PipelineVertexInputStateCreateInfo, PushConstantRange, ShaderStageFlags,
 };
+use beuk::buffer::BufferDescriptor;
 use beuk::ctx::SamplerDesc;
-use beuk::memory::{MemoryLocation, TextureHandle};
+use beuk::memory::MemoryLocation;
+use beuk::memory2::ResourceHandle;
 use beuk::pipeline::{BlendState, MultisampleState};
+use beuk::texture::Texture;
 use beuk::{ctx::RenderContext, memory::PipelineHandle};
 use beuk::{
     pipeline::{GraphicsPipelineDescriptor, PrimitiveState},
     shaders::Shader,
 };
-use std::sync::{Arc, RwLock};
 
 use epaint::textures::TextureOptions;
-use epaint::{Fonts, Primitive, TessellationOptions, TextureId, TextureManager};
+use epaint::{Primitive, TessellationOptions, TextureId};
 
 use crate::application::RendererState;
 
@@ -29,15 +31,15 @@ pub struct Renderer {
     pub pipeline_handle: PipelineHandle,
     // pub vertex_buffer: Option<BufferHandle>,
     // pub index_buffer: Option<BufferHandle>,
-    pub attachment_handle: TextureHandle,
-    pub multisampled_handle: Option<TextureHandle>,
+    pub attachment_handle: ResourceHandle<Texture>,
+    pub multisampled_handle: Option<ResourceHandle<Texture>>,
     pub shapes: Vec<epaint::ClippedShape>,
     pub state: RendererState,
-    pub textures: HashMap<epaint::TextureId, TextureHandle>,
+    pub textures: HashMap<epaint::TextureId, ResourceHandle<Texture>>,
 }
 
 impl Renderer {
-    pub fn new(ctx: &mut RenderContext, state: RendererState) -> Self {
+    pub fn new(ctx: &RenderContext, state: RendererState) -> Self {
         let vertex_shader = Shader::from_source_text(
             &ctx.device,
             include_str!("./shader.vert"),
@@ -54,17 +56,18 @@ impl Renderer {
             "main",
         );
 
-        let image_format = ctx.render_swapchain.surface_format.format;
+        let swapchain = ctx.get_swapchain();
+        let image_format = swapchain.surface_format.format;
         let msaa = 1;
         let multisampled_handle = if msaa != 1 {
-            Some(ctx.texture_manager.create_texture(
+            Some(ctx.create_texture(
                 "ui_resolve",
                 &ImageCreateInfo {
                     image_type: vk::ImageType::TYPE_2D,
                     format: image_format,
                     extent: vk::Extent3D {
-                        width: ctx.render_swapchain.surface_resolution.width,
-                        height: ctx.render_swapchain.surface_resolution.height,
+                        width: swapchain.surface_resolution.width,
+                        height: swapchain.surface_resolution.height,
                         depth: 1,
                     },
                     samples: vk::SampleCountFlags::from_raw(msaa),
@@ -80,14 +83,14 @@ impl Renderer {
         } else {
             None
         };
-        let attachment_handle = ctx.texture_manager.create_texture(
+        let attachment_handle = ctx.create_texture(
             "ui",
             &ImageCreateInfo {
                 image_type: vk::ImageType::TYPE_2D,
                 format: image_format,
                 extent: vk::Extent3D {
-                    width: ctx.render_swapchain.surface_resolution.width,
-                    height: ctx.render_swapchain.surface_resolution.height,
+                    width: swapchain.surface_resolution.width,
+                    height: swapchain.surface_resolution.height,
                     depth: 1,
                 },
                 samples: vk::SampleCountFlags::TYPE_1,
@@ -102,72 +105,60 @@ impl Renderer {
             },
         );
 
-        ctx.texture_manager
-            .get_texture_mut(attachment_handle)
-            .create_view(&ctx.device);
-
-        if let Some(multisampled_handle) = multisampled_handle {
-            ctx.texture_manager
-                .get_texture_mut(multisampled_handle)
-                .create_view(&ctx.device);
-        }
-
-        let pipeline_handle =
-            ctx.pipeline_manager
-                .create_graphics_pipeline(GraphicsPipelineDescriptor {
-                    vertex_shader,
-                    fragment_shader,
-                    vertex_input: PipelineVertexInputStateCreateInfo::default()
-                        .vertex_attribute_descriptions(&[
-                            vk::VertexInputAttributeDescription {
-                                location: 0,
-                                binding: 0,
-                                format: vk::Format::R32G32_SFLOAT,
-                                offset: bytemuck::offset_of!(epaint::Vertex, pos) as u32,
-                            },
-                            vk::VertexInputAttributeDescription {
-                                location: 1,
-                                binding: 0,
-                                format: vk::Format::R32G32_SFLOAT,
-                                offset: bytemuck::offset_of!(epaint::Vertex, uv) as u32,
-                            },
-                            vk::VertexInputAttributeDescription {
-                                location: 2,
-                                binding: 0,
-                                format: vk::Format::R8G8B8A8_UNORM,
-                                offset: bytemuck::offset_of!(epaint::Vertex, color) as u32,
-                            },
-                        ])
-                        .vertex_binding_descriptions(&[vk::VertexInputBindingDescription {
-                            binding: 0,
-                            stride: std::mem::size_of::<epaint::Vertex>() as u32,
-                            input_rate: vk::VertexInputRate::VERTEX,
-                        }]),
-                    color_attachment_formats: &[image_format],
-                    depth_attachment_format: vk::Format::UNDEFINED,
-                    viewport: ctx.render_swapchain.surface_resolution,
-                    primitive: PrimitiveState {
-                        cull_mode: vk::CullModeFlags::NONE,
-                        topology: vk::PrimitiveTopology::TRIANGLE_LIST,
-                        front_face: vk::FrontFace::COUNTER_CLOCKWISE,
-                        ..Default::default()
+        let pipeline_handle = ctx.create_graphics_pipeline(&GraphicsPipelineDescriptor {
+            vertex_shader,
+            fragment_shader,
+            vertex_input: PipelineVertexInputStateCreateInfo::default()
+                .vertex_attribute_descriptions(&[
+                    vk::VertexInputAttributeDescription {
+                        location: 0,
+                        binding: 0,
+                        format: vk::Format::R32G32_SFLOAT,
+                        offset: bytemuck::offset_of!(epaint::Vertex, pos) as u32,
                     },
-                    depth_stencil: Default::default(),
-                    push_constant_range: Some(
-                        PushConstantRange::default()
-                            .stage_flags(ShaderStageFlags::ALL_GRAPHICS)
-                            .offset(0)
-                            .size(size_of::<PushConstants>() as u32),
-                    ),
-                    blend: vec![BlendState::ALPHA_BLENDING],
-                    multisample: MultisampleState {
-                        count: msaa,
-                        mask: !0,
-                        alpha_to_coverage_enabled: false,
+                    vk::VertexInputAttributeDescription {
+                        location: 1,
+                        binding: 0,
+                        format: vk::Format::R32G32_SFLOAT,
+                        offset: bytemuck::offset_of!(epaint::Vertex, uv) as u32,
                     },
-                });
+                    vk::VertexInputAttributeDescription {
+                        location: 2,
+                        binding: 0,
+                        format: vk::Format::R8G8B8A8_UNORM,
+                        offset: bytemuck::offset_of!(epaint::Vertex, color) as u32,
+                    },
+                ])
+                .vertex_binding_descriptions(&[vk::VertexInputBindingDescription {
+                    binding: 0,
+                    stride: std::mem::size_of::<epaint::Vertex>() as u32,
+                    input_rate: vk::VertexInputRate::VERTEX,
+                }]),
+            color_attachment_formats: &[image_format],
+            depth_attachment_format: vk::Format::UNDEFINED,
+            viewport: None,
+            primitive: PrimitiveState {
+                cull_mode: vk::CullModeFlags::NONE,
+                topology: vk::PrimitiveTopology::TRIANGLE_LIST,
+                front_face: vk::FrontFace::COUNTER_CLOCKWISE,
+                ..Default::default()
+            },
+            depth_stencil: Default::default(),
+            push_constant_range: Some(
+                PushConstantRange::default()
+                    .stage_flags(ShaderStageFlags::ALL_GRAPHICS)
+                    .offset(0)
+                    .size(size_of::<PushConstants>() as u32),
+            ),
+            blend: vec![BlendState::ALPHA_BLENDING],
+            multisample: MultisampleState {
+                count: msaa,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+        });
 
-        let textures: HashMap<TextureId, TextureHandle> = HashMap::new();
+        let textures: HashMap<TextureId, ResourceHandle<Texture>> = HashMap::new();
 
         Self {
             pipeline_handle,
@@ -180,7 +171,7 @@ impl Renderer {
     }
 
     #[tracing::instrument(name = "Renderer::render", skip_all)]
-    pub fn render(&mut self, ctx: &mut RenderContext) {
+    pub fn render(&mut self, ctx: &RenderContext) {
         let texture_delta = {
             let font_image_delta = self.state.fonts.read().unwrap().font_image_delta();
             if let Some(font_image_delta) = font_image_delta {
@@ -202,7 +193,7 @@ impl Renderer {
 
         for (id, delta) in texture_delta.set {
             let delta = delta.clone();
-            let handle = ctx.texture_manager.create_texture(
+            let texture_handle = ctx.create_texture(
                 "fonts",
                 &ImageCreateInfo {
                     image_type: vk::ImageType::TYPE_2D,
@@ -225,22 +216,22 @@ impl Renderer {
                 epaint::ImageData::Color(image) => image.pixels,
                 epaint::ImageData::Font(font) => font.srgba_pixels(None).collect(),
             };
-            let buffer_handle = ctx.buffer_manager.create_buffer_with_data(
-                "fonts",
+            let buffer_handle = ctx.create_buffer_with_data(
+                &BufferDescriptor {
+                    debug_name: "fonts",
+                    location: MemoryLocation::CpuToGpu,
+                    size: data.len() as u64 * 4,
+                    usage: vk::BufferUsageFlags::TRANSFER_SRC,
+                },
                 bytemuck::cast_slice(&data),
-                vk::BufferUsageFlags::TRANSFER_SRC,
-                MemoryLocation::CpuToGpu,
+                0,
             );
-            let buffer = ctx.buffer_manager.get_buffer(buffer_handle);
-            let texture = ctx.texture_manager.get_texture(handle);
-            ctx.copy_buffer_to_texture(buffer, texture);
-            ctx.buffer_manager.remove_buffer(buffer_handle);
-            let texture = ctx.texture_manager.get_texture_mut(handle);
-            let view = texture.create_view(&ctx.device);
+
+            ctx.copy_buffer_to_texture(&buffer_handle, &texture_handle);
+            let view = ctx.get_texture_view(&texture_handle).unwrap();
             unsafe {
-                let pipeline = ctx
-                    .pipeline_manager
-                    .get_graphics_pipeline(&self.pipeline_handle);
+                let manager = ctx.get_pipeline_manager();
+                let pipeline = manager.get_graphics_pipeline(&self.pipeline_handle.id());
                 ctx.device.update_descriptor_sets(
                     &[vk::WriteDescriptorSet::default()
                         .dst_set(pipeline.descriptor_sets[0])
@@ -249,14 +240,16 @@ impl Renderer {
                         .image_info(std::slice::from_ref(
                             &vk::DescriptorImageInfo::default()
                                 .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                                .image_view(view)
-                                .sampler(ctx.pipeline_manager.immutable_shader_info.get_sampler(
-                                    &SamplerDesc {
-                                        address_modes: vk::SamplerAddressMode::CLAMP_TO_EDGE,
-                                        mipmap_mode: vk::SamplerMipmapMode::LINEAR,
-                                        texel_filter: vk::Filter::LINEAR,
-                                    },
-                                )),
+                                .image_view(*view)
+                                .sampler(
+                                    ctx.get_pipeline_manager()
+                                        .immutable_shader_info
+                                        .get_sampler(&SamplerDesc {
+                                            address_modes: vk::SamplerAddressMode::CLAMP_TO_EDGE,
+                                            mipmap_mode: vk::SamplerMipmapMode::LINEAR,
+                                            texel_filter: vk::Filter::LINEAR,
+                                        }),
+                                ),
                         ))],
                     &[],
                 );
@@ -282,18 +275,27 @@ impl Renderer {
         for (index, primitive) in primitives.iter().enumerate() {
             match &primitive.primitive {
                 Primitive::Mesh(mesh) => {
-                    let vertex_buffer = ctx.buffer_manager.create_buffer_with_data(
-                        &format!("vertices_{}", index),
+                    let vertex_buffer = ctx.create_buffer_with_data(
+                        &BufferDescriptor {
+                            debug_name: "vertices",
+                            size: (mesh.vertices.len() * std::mem::size_of::<epaint::Vertex>())
+                                as u64,
+                            location: MemoryLocation::GpuOnly,
+                            usage: vk::BufferUsageFlags::VERTEX_BUFFER,
+                        },
                         bytemuck::cast_slice(&mesh.vertices),
-                        vk::BufferUsageFlags::VERTEX_BUFFER,
-                        MemoryLocation::CpuToGpu,
+                        0,
                     );
 
-                    let index_buffer = ctx.buffer_manager.create_buffer_with_data(
-                        &format!("indices-{}", index),
+                    let index_buffer = ctx.create_buffer_with_data(
+                        &BufferDescriptor {
+                            debug_name: "indices",
+                            size: (mesh.indices.len() * std::mem::size_of::<u32>()) as u64,
+                            location: MemoryLocation::GpuOnly,
+                            usage: vk::BufferUsageFlags::INDEX_BUFFER,
+                        },
                         bytemuck::cast_slice(&mesh.indices),
-                        vk::BufferUsageFlags::INDEX_BUFFER,
-                        MemoryLocation::CpuToGpu,
+                        0,
                     );
                     draw_list.push((
                         vertex_buffer,
@@ -306,20 +308,18 @@ impl Renderer {
             }
         }
 
-        ctx.record(
+        ctx.record_submit(
             ctx.draw_command_buffer,
             ctx.draw_commands_reuse_fence,
             |ctx, command_buffer| unsafe {
                 let color_attachments = &[vk::RenderingAttachmentInfo::default()
                     .image_view(
-                        ctx.texture_manager
-                            .get_texture(if self.multisampled_handle.is_some() {
-                                self.multisampled_handle.unwrap()
-                            } else {
-                                self.attachment_handle
-                            })
-                            .view
-                            .unwrap(),
+                        *ctx.get_texture_view(if self.multisampled_handle.is_some() {
+                            self.multisampled_handle.as_ref().unwrap()
+                        } else {
+                            &self.attachment_handle
+                        })
+                        .unwrap(),
                     )
                     .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
                     .load_op(vk::AttachmentLoadOp::CLEAR)
@@ -332,10 +332,10 @@ impl Renderer {
 
                 ctx.begin_rendering(command_buffer, color_attachments, None);
 
-                let pipeline = ctx
-                    .pipeline_manager
-                    .get_graphics_pipeline(&self.pipeline_handle);
+                let manager = ctx.get_pipeline_manager();
+                let pipeline = manager.get_graphics_pipeline(&self.pipeline_handle.id());
                 pipeline.bind(&ctx.device, command_buffer);
+                let swapchain = ctx.get_swapchain();
                 ctx.device.cmd_push_constants(
                     command_buffer,
                     pipeline.layout,
@@ -343,22 +343,25 @@ impl Renderer {
                     0,
                     bytemuck::bytes_of(&PushConstants {
                         screen_size: [
-                            ctx.render_swapchain.surface_resolution.width as f32,
-                            ctx.render_swapchain.surface_resolution.height as f32,
+                            swapchain.surface_resolution.width as f32,
+                            swapchain.surface_resolution.height as f32,
                         ],
                     }),
                 );
+                drop(swapchain);
 
                 for (vertex_handle, index_handle, indices_len, texture_id) in draw_list.iter() {
                     ctx.device.cmd_bind_vertex_buffers(
                         command_buffer,
                         0,
-                        std::slice::from_ref(&ctx.buffer_manager.get_buffer(*vertex_handle).buffer),
+                        std::slice::from_ref(
+                            &ctx.buffer_manager.get(vertex_handle.id()).unwrap().buffer,
+                        ),
                         &[0],
                     );
                     ctx.device.cmd_bind_index_buffer(
                         command_buffer,
-                        ctx.buffer_manager.get_buffer(*index_handle).buffer,
+                        ctx.buffer_manager.get(index_handle.id()).unwrap().buffer,
                         0,
                         vk::IndexType::UINT32,
                     );
@@ -369,24 +372,24 @@ impl Renderer {
                 ctx.end_rendering(command_buffer);
             },
         );
-        ctx.submit(&ctx.draw_command_buffer, ctx.draw_commands_reuse_fence);
 
-        for (vertex_handle, index_handle, _, _) in draw_list.iter() {
-            ctx.buffer_manager.remove_buffer(*vertex_handle);
-            ctx.buffer_manager.remove_buffer(*index_handle);
-        }
-
-        if let Some(multisampled_handle) = self.multisampled_handle {
-            ctx.record(
+        if let Some(multisampled_handle) = self.multisampled_handle.as_ref() {
+            ctx.record_submit(
                 ctx.draw_command_buffer,
                 ctx.draw_commands_reuse_fence,
                 |ctx, command_buffer| unsafe {
-                    let src_image = ctx.texture_manager.get_texture(multisampled_handle).image;
+                    let src_image = ctx
+                        .texture_manager
+                        .get(multisampled_handle.id())
+                        .unwrap()
+                        .image;
                     let dst_image = ctx
                         .texture_manager
-                        .get_texture(self.attachment_handle)
+                        .get(self.attachment_handle.id())
+                        .unwrap()
                         .image;
 
+                    let swapchain = ctx.get_swapchain();
                     ctx.device.cmd_resolve_image(
                         command_buffer,
                         src_image,
@@ -407,14 +410,13 @@ impl Renderer {
                                 layer_count: 1,
                             })
                             .extent(vk::Extent3D {
-                                width: ctx.render_swapchain.surface_resolution.width,
-                                height: ctx.render_swapchain.surface_resolution.height,
+                                width: swapchain.surface_resolution.width,
+                                height: swapchain.surface_resolution.height,
                                 depth: 1,
                             })],
                     );
                 },
             );
-            ctx.submit(&ctx.draw_command_buffer, ctx.draw_commands_reuse_fence);
         }
     }
 }

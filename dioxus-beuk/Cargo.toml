@@ -20,7 +20,7 @@ rustc-hash = "1.1.0"
 shipyard = {  version = "0.6.2", features = ["proc", "std"], default-features = false }
 once_cell = "1.17.1"
 image = "0.24.5"
-beuk = { git = "https://github.com/dylanblokhuis/beuk", rev = "6722624444c1067d1546e10499fca8ef5ff16e4f" }
+beuk = { git = "https://github.com/dylanblokhuis/beuk", rev = "f94c9c19a9d89a04c92a73322b3fd203f9a89465" }
 bytemuck = { version = "1.13.1", features = ["derive"] }
 epaint = { version = "0.22.0", features = ["bytemuck", "default", "log"] }
 dioxus-hot-reload = { git = "https://github.com/DioxusLabs/dioxus/", optional = true }
