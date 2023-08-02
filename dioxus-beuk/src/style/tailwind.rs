@@ -142,11 +142,10 @@ impl State for Tailwind {
                 if let Some(color) = Self::handle_color(class, &colors) {
                     self.color = color;
                 }
-                // handle other text- classes here
             }
 
             if let Some(class) = class.strip_prefix("p-") {
-                let padding = LengthPercentage::Length(class.parse::<f32>().unwrap());
+                let padding = LengthPercentage::Length(class.parse::<f32>().unwrap_or(0.0));
                 style.padding = Rect {
                     top: padding,
                     bottom: padding,
@@ -156,19 +155,19 @@ impl State for Tailwind {
             }
 
             if let Some(class) = class.strip_prefix("py-") {
-                let padding = LengthPercentage::Length(class.parse::<f32>().unwrap());
+                let padding = LengthPercentage::Length(class.parse::<f32>().unwrap_or(0.0));
                 style.padding.top = padding;
                 style.padding.bottom = padding;
             }
 
             if let Some(class) = class.strip_prefix("px-") {
-                let padding = LengthPercentage::Length(class.parse::<f32>().unwrap());
+                let padding = LengthPercentage::Length(class.parse::<f32>().unwrap_or(0.0));
                 style.padding.left = padding;
                 style.padding.right = padding;
             }
 
             if let Some(class) = class.strip_prefix("rounded-") {
-                let value = class.parse::<f32>().unwrap();
+                let value = class.parse::<f32>().unwrap_or(0.0);
                 self.border.radius.ne = value;
                 self.border.radius.nw = value;
                 self.border.radius.se = value;
@@ -179,7 +178,7 @@ impl State for Tailwind {
                 if let Some(color) = Self::handle_color(class, &colors) {
                     self.border.color = color;
                 } else {
-                    let value = class.parse::<f32>().unwrap();
+                    let value = class.parse::<f32>().unwrap_or(0.0);
                     self.border.width = value;
                 }
             }
@@ -279,12 +278,22 @@ impl Tailwind {
                 if class.ends_with('%') {
                     println!(
                         "{:?}",
-                        class.strip_suffix('%').unwrap().parse::<f32>().unwrap()
+                        class
+                            .strip_suffix('%')
+                            .unwrap()
+                            .parse::<f32>()
+                            .unwrap_or(0.0)
                     );
 
-                    Dimension::Percent(class.strip_suffix('%').unwrap().parse::<f32>().unwrap())
+                    Dimension::Percent(
+                        class
+                            .strip_suffix('%')
+                            .unwrap()
+                            .parse::<f32>()
+                            .unwrap_or(0.0),
+                    )
                 } else {
-                    Dimension::Length(class.parse::<f32>().unwrap())
+                    Dimension::Length(class.parse::<f32>().unwrap_or(0.0))
                 }
             }
         }

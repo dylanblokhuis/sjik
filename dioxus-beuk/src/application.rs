@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockWriteGuard};
 use tao::{dpi::PhysicalSize, event_loop::EventLoopProxy};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 
+use crate::image::ImageExtractor;
 use crate::renderer::Renderer;
 use crate::style::Tailwind;
 use crate::EventData;
@@ -51,6 +52,7 @@ impl DioxusApp {
         let mut rdom = RealDom::new([
             MouseEffected::to_type_erased(),
             Tailwind::to_type_erased(),
+            ImageExtractor::to_type_erased(),
             Focus::to_type_erased(),
             PreventDefault::to_type_erased(),
         ]);

@@ -33,7 +33,9 @@ fn main() {
     }
 
     #[cfg(feature = "hot-reload")]
-    dioxus_hot_reload::hot_reload_init!();
+    dioxus_beuk::hot_reload::init(
+        dioxus_beuk::hot_reload::Config::new().root(env!("CARGO_MANIFEST_DIR")),
+    );
 
     std::env::set_var("RUST_LOG", "info");
     simple_logger::SimpleLogger::new().env().init().unwrap();

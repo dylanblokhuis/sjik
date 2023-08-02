@@ -3493,7 +3493,6 @@ dependencies = [
  "cpal 0.15.2",
  "crossbeam-channel",
  "dioxus",
- "dioxus-hot-reload",
  "dioxus_beuk",
  "log",
  "once_cell",

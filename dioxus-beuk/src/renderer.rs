@@ -157,6 +157,16 @@ impl Renderer {
             },
         });
 
+        let font_image_delta = state.fonts.read().unwrap().font_image_delta();
+        if let Some(font_image_delta) = font_image_delta {
+            let mut manager = state.tex_manager.write().unwrap();
+            manager.alloc(
+                "fonts".into(),
+                font_image_delta.image,
+                TextureOptions::LINEAR,
+            );
+        }
+
         Self {
             pipeline_handle,
             attachment_handle,
@@ -172,10 +182,6 @@ impl Renderer {
             let font_image_delta = self.state.fonts.read().unwrap().font_image_delta();
             if let Some(font_image_delta) = font_image_delta {
                 let mut manager = self.state.tex_manager.write().unwrap();
-                if manager.num_allocated() == 0 {
-                    let delta = font_image_delta.clone();
-                    manager.alloc("fonts".into(), delta.image, TextureOptions::LINEAR);
-                }
                 manager.set(TextureId::default(), font_image_delta);
             }
 
@@ -210,9 +216,6 @@ impl Renderer {
                     ..Default::default()
                 },
             );
-
-            println!("pos {:?}", delta.pos);
-            println!("size {:?}", delta.image.size());
 
             let data = match delta.image.clone() {
                 epaint::ImageData::Color(image) => image.pixels,

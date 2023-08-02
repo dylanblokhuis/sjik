@@ -1,17 +1,18 @@
 use dioxus_native_core::prelude::*;
 use epaint::emath::Align;
-use epaint::{ClippedShape, FontId};
+use epaint::{ClippedShape, Color32, FontId};
 
 use taffy::prelude::Layout;
 use taffy::Taffy;
 
 use crate::focus::Focused;
+use crate::image::ImageExtractor;
 use crate::renderer::Renderer;
 use crate::style::Tailwind;
 
 use crate::RealDom;
 
-const FOCUS_BORDER_WIDTH: f32 = 6.0;
+const FOCUS_BORDER_WIDTH: f32 = 4.0;
 
 pub(crate) fn render(dom: &RealDom, taffy: &Taffy, renderer: &mut Renderer) {
     let root = &dom.get(dom.root_id()).unwrap();
@@ -48,6 +49,7 @@ fn render_node(taffy: &Taffy, node: NodeRef, renderer: &mut Renderer, location: 
         NodeType::Element(_) => {
             let shape = get_shape(layout, node, location);
             let clip = shape.visual_bounding_rect();
+
             renderer.shapes.push(ClippedShape(clip, shape));
             for child in node.children() {
                 render_node(taffy, child, renderer, location);
@@ -63,6 +65,7 @@ pub(crate) fn get_shape(layout: &Layout, node: NodeRef, location: epaint::Pos2) 
     let width: f32 = layout.size.width;
     let height: f32 = layout.size.height;
     let tailwind: &Tailwind = &node.get().unwrap();
+    let image_extractor: &ImageExtractor = &node.get().unwrap();
     let focused = node.get::<Focused>().filter(|focused| focused.0).is_some();
     let left_border_width = if focused {
         FOCUS_BORDER_WIDTH
@@ -91,14 +94,26 @@ pub(crate) fn get_shape(layout: &Layout, node: NodeRef, location: epaint::Pos2) 
     let x_end: f32 = x + width - right_border_width / 2.0;
     let y_end: f32 = y + height - bottom_border_width / 2.0;
 
-    epaint::Shape::Rect(epaint::RectShape {
-        rect: epaint::Rect {
-            min: epaint::Pos2 {
-                x: x_start,
-                y: y_start,
-            },
-            max: epaint::Pos2 { x: x_end, y: y_end },
+    let rect = epaint::Rect {
+        min: epaint::Pos2 {
+            x: x_start,
+            y: y_start,
         },
+        max: epaint::Pos2 { x: x_end, y: y_end },
+    };
+
+    if image_extractor.path != String::default() {
+        // TODO: rounding
+        return epaint::Shape::image(
+            image_extractor.texture_id,
+            rect,
+            epaint::Rect::from_min_max(epaint::pos2(0.0, 0.0), epaint::pos2(1.0, 1.0)),
+            Color32::WHITE,
+        );
+    }
+
+    epaint::Shape::Rect(epaint::RectShape {
+        rect,
         rounding: epaint::Rounding {
             nw: tailwind.border.radius.nw,
             ne: tailwind.border.radius.ne,
