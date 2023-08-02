@@ -18,7 +18,7 @@ pub fn app(cx: Scope) -> Element {
           div {
             class: "text-red-500",
             onclick: move |_| count.modify(|v| {v.add(100)}),
-            "Test kinda crazy how this just works bro"
+            "Test kinda crazy how this just works"
           }
 
           div {
