@@ -45,7 +45,7 @@ impl DioxusApp {
     /// Create a new window state and spawn a vdom thread.
     pub fn new(
         app: fn(Scope) -> Element,
-        render_context: &mut RenderContext,
+        render_context: &RenderContext,
         proxy: EventLoopProxy<Redraw>,
     ) -> Self {
         let mut rdom = RealDom::new([
@@ -92,7 +92,7 @@ impl DioxusApp {
     }
 
     #[tracing::instrument(name = "DioxusApp::render", skip_all)]
-    pub fn render(&mut self, render_context: &mut RenderContext) {
+    pub fn render(&mut self, render_context: &RenderContext) {
         self.renderer.shapes.clear();
 
         self.dom.render(&mut self.renderer);

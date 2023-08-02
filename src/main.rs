@@ -45,7 +45,7 @@ fn main() {
         .build(&event_loop)
         .unwrap();
 
-    let mut ctx = beuk::ctx::RenderContext::new(RenderContextDescriptor {
+    let ctx = beuk::ctx::RenderContext::new(RenderContextDescriptor {
         display_handle: window.raw_display_handle(),
         window_handle: window.raw_window_handle(),
         present_mode: PresentModeKHR::FIFO,
@@ -67,10 +67,10 @@ fn main() {
         }
     });
 
-    let mut media_node = MediaRenderPass::new(&mut ctx);
-    let mut present_node = PresentRenderPass::new(&mut ctx);
+    let mut media_node = MediaRenderPass::new(&ctx);
+    let mut present_node = PresentRenderPass::new(&ctx);
 
-    let mut application = DioxusApp::new(ui::app, &mut ctx, event_loop.create_proxy());
+    let mut application = DioxusApp::new(ui::app, &ctx, event_loop.create_proxy());
 
     event_loop.run(move |event, _, control_flow| {
         application.send_event(&event);
@@ -88,13 +88,13 @@ fn main() {
                 if rx.is_full() {
                     if let Some(current_video) = current_video.read().unwrap().as_ref() {
                         let frame = rx.recv().unwrap();
-                        media_node.setup_buffers(&mut ctx, current_video);
-                        media_node.draw(&mut ctx, current_video, &frame);
+                        media_node.setup_buffers(&ctx, current_video);
+                        media_node.draw(&ctx, &frame);
                     }
                 }
 
                 if !application.clean().is_empty() {
-                    application.render(&mut ctx);
+                    application.render(&ctx);
                 }
 
                 let present_index = ctx.acquire_present_index();

@@ -22,7 +22,7 @@ struct Vertex {
 }
 
 impl PresentRenderPass {
-    pub fn new(ctx: &mut RenderContext) -> Self {
+    pub fn new(ctx: &RenderContext) -> Self {
         let vertex_shader = beuk::shaders::Shader::from_source_text(
             &ctx.device,
             include_str!("./shader.vert"),

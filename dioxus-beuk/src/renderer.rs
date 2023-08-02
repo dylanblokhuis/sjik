@@ -1,8 +1,9 @@
 use std::collections::HashMap;
-use std::mem::size_of;
+use std::mem::{size_of, size_of_val};
 
 use beuk::ash::vk::{
-    self, ImageCreateInfo, PipelineVertexInputStateCreateInfo, PushConstantRange, ShaderStageFlags,
+    self, DeviceSize, ImageCreateInfo, PipelineVertexInputStateCreateInfo, PushConstantRange,
+    ShaderStageFlags,
 };
 use beuk::buffer::BufferDescriptor;
 use beuk::ctx::SamplerDesc;
@@ -192,7 +193,9 @@ impl Renderer {
         );
 
         for (id, delta) in texture_delta.set {
-            let delta = delta.clone();
+            if !self.textures.is_empty() {
+                continue;
+            }
             let texture_handle = ctx.create_texture(
                 "fonts",
                 &ImageCreateInfo {
@@ -216,18 +219,19 @@ impl Renderer {
                 epaint::ImageData::Color(image) => image.pixels,
                 epaint::ImageData::Font(font) => font.srgba_pixels(None).collect(),
             };
+            let data = bytemuck::cast_slice(&data);
             let buffer_handle = ctx.create_buffer_with_data(
                 &BufferDescriptor {
                     debug_name: "fonts",
                     location: MemoryLocation::CpuToGpu,
-                    size: data.len() as u64 * 4,
                     usage: vk::BufferUsageFlags::TRANSFER_SRC,
+                    ..Default::default()
                 },
-                bytemuck::cast_slice(&data),
+                data,
                 0,
             );
-
             ctx.copy_buffer_to_texture(&buffer_handle, &texture_handle);
+            drop(buffer_handle);
             let view = ctx.get_texture_view(&texture_handle).unwrap();
             unsafe {
                 let manager = ctx.get_pipeline_manager();
@@ -254,6 +258,9 @@ impl Renderer {
                     &[],
                 );
             }
+
+            println!("inserting texture {:?} at id {:?}", texture_handle.id(), id);
+            self.textures.insert(id, texture_handle);
         }
 
         let (font_tex_size, prepared_discs) = {
@@ -272,16 +279,15 @@ impl Renderer {
         );
 
         let mut draw_list = Vec::with_capacity(primitives.len());
-        for (index, primitive) in primitives.iter().enumerate() {
+        for primitive in primitives {
             match &primitive.primitive {
                 Primitive::Mesh(mesh) => {
                     let vertex_buffer = ctx.create_buffer_with_data(
                         &BufferDescriptor {
                             debug_name: "vertices",
-                            size: (mesh.vertices.len() * std::mem::size_of::<epaint::Vertex>())
-                                as u64,
-                            location: MemoryLocation::GpuOnly,
+                            location: MemoryLocation::CpuToGpu,
                             usage: vk::BufferUsageFlags::VERTEX_BUFFER,
+                            ..Default::default()
                         },
                         bytemuck::cast_slice(&mesh.vertices),
                         0,
@@ -290,9 +296,9 @@ impl Renderer {
                     let index_buffer = ctx.create_buffer_with_data(
                         &BufferDescriptor {
                             debug_name: "indices",
-                            size: (mesh.indices.len() * std::mem::size_of::<u32>()) as u64,
-                            location: MemoryLocation::GpuOnly,
+                            location: MemoryLocation::CpuToGpu,
                             usage: vk::BufferUsageFlags::INDEX_BUFFER,
+                            ..Default::default()
                         },
                         bytemuck::cast_slice(&mesh.indices),
                         0,

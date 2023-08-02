@@ -40,7 +40,7 @@ pub struct MediaRenderPass {
 }
 
 impl MediaRenderPass {
-    pub fn new(ctx: &mut RenderContext) -> Self {
+    pub fn new(ctx: &RenderContext) -> Self {
         let vertex_buffer = ctx.create_buffer_with_data(
             &BufferDescriptor {
                 debug_name: "vertices",
@@ -122,7 +122,7 @@ impl MediaRenderPass {
         }
     }
 
-    pub fn setup_buffers(&mut self, ctx: &mut RenderContext, current_video: &CurrentVideo) {
+    pub fn setup_buffers(&mut self, ctx: &RenderContext, current_video: &CurrentVideo) {
         if self.yuv.is_some() && self.frame_buffer.is_some() && self.uniform_buffer.is_some() {
             return;
         }
@@ -589,7 +589,7 @@ void main() {
     }
 
     #[tracing::instrument(name = "MediaRenderPass::draw", skip_all)]
-    pub fn draw(&self, ctx: &mut RenderContext, current_video: &CurrentVideo, frame: &[u8]) {
+    pub fn draw(&self, ctx: &RenderContext, frame: &[u8]) {
         let buffer = ctx
             .buffer_manager
             .get_mut(self.frame_buffer.as_ref().unwrap().id())
