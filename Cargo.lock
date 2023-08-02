@@ -342,7 +342,7 @@ dependencies = [
 [[package]]
 name = "beuk"
 version = "0.1.0"
-source = "git+https://github.com/dylanblokhuis/beuk?rev=65dc43bab3835798e76e78e44922df2d031a658d#65dc43bab3835798e76e78e44922df2d031a658d"
+source = "git+https://github.com/dylanblokhuis/beuk?rev=391bee9b829f689dbb2c5fd4e332209e1ba76fac#391bee9b829f689dbb2c5fd4e332209e1ba76fac"
 dependencies = [
  "anyhow",
  "arrayvec",
@@ -1161,6 +1161,7 @@ dependencies = [
  "epaint",
  "image",
  "keyboard-types",
+ "log",
  "once_cell",
  "raw-window-handle",
  "rustc-hash",
@@ -1182,8 +1183,7 @@ checksum = "bd0c93bb4b0c6d9b77f4435b0ae98c24d17f1c45b2ff844c6151a07256ca923b"
 [[package]]
 name = "ecolor"
 version = "0.22.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e479a7fa3f23d4e794f8b2f8b3568dd4e47886ad1b12c9c095e141cb591eb63"
+source = "git+https://github.com/emilk/egui#bdc8795b0476c25faab927fc3c731f2d79f2098f"
 dependencies = [
  "bytemuck",
 ]
@@ -1197,8 +1197,7 @@ checksum = "a26ae43d7bcc3b814de94796a5e736d4029efb0ee900c12e2d54c993ad1a1e07"
 [[package]]
 name = "emath"
 version = "0.22.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3857d743a6e0741cdd60b622a74c7a36ea75f5f8f11b793b41d905d2c9721a4b"
+source = "git+https://github.com/emilk/egui#bdc8795b0476c25faab927fc3c731f2d79f2098f"
 dependencies = [
  "bytemuck",
 ]
@@ -1261,8 +1260,7 @@ dependencies = [
 [[package]]
 name = "epaint"
 version = "0.22.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09333964d4d57f40a85338ba3ca5ed4716070ab184dcfed966b35491c5c64f3b"
+source = "git+https://github.com/emilk/egui#bdc8795b0476c25faab927fc3c731f2d79f2098f"
 dependencies = [
  "ab_glyph",
  "ahash 0.8.3",

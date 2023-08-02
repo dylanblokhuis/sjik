@@ -1,8 +1,8 @@
 use std::collections::HashMap;
-use std::mem::{size_of, size_of_val};
+use std::mem::size_of;
 
 use beuk::ash::vk::{
-    self, DeviceSize, ImageCreateInfo, PipelineVertexInputStateCreateInfo, PushConstantRange,
+    self, DescriptorSet, ImageCreateInfo, PipelineVertexInputStateCreateInfo, PushConstantRange,
     ShaderStageFlags,
 };
 use beuk::buffer::BufferDescriptor;
@@ -10,7 +10,7 @@ use beuk::ctx::SamplerDesc;
 use beuk::memory::MemoryLocation;
 use beuk::memory2::ResourceHandle;
 use beuk::pipeline::{BlendState, MultisampleState};
-use beuk::texture::Texture;
+use beuk::texture::{Texture, TransitionDesc};
 use beuk::{ctx::RenderContext, memory::PipelineHandle};
 use beuk::{
     pipeline::{GraphicsPipelineDescriptor, PrimitiveState},
@@ -30,13 +30,11 @@ pub struct PushConstants {
 
 pub struct Renderer {
     pub pipeline_handle: PipelineHandle,
-    // pub vertex_buffer: Option<BufferHandle>,
-    // pub index_buffer: Option<BufferHandle>,
     pub attachment_handle: ResourceHandle<Texture>,
     pub multisampled_handle: Option<ResourceHandle<Texture>>,
     pub shapes: Vec<epaint::ClippedShape>,
     pub state: RendererState,
-    pub textures: HashMap<epaint::TextureId, ResourceHandle<Texture>>,
+    pub textures: HashMap<epaint::TextureId, (DescriptorSet, ResourceHandle<Texture>)>,
 }
 
 impl Renderer {
@@ -159,43 +157,38 @@ impl Renderer {
             },
         });
 
-        let textures: HashMap<TextureId, ResourceHandle<Texture>> = HashMap::new();
-
         Self {
             pipeline_handle,
             attachment_handle,
             multisampled_handle,
             shapes: vec![],
             state,
-            textures,
+            textures: HashMap::new(),
         }
     }
 
-    #[tracing::instrument(name = "Renderer::render", skip_all)]
-    pub fn render(&mut self, ctx: &RenderContext) {
+    pub fn update_textures(&mut self, ctx: &RenderContext) {
         let texture_delta = {
             let font_image_delta = self.state.fonts.read().unwrap().font_image_delta();
             if let Some(font_image_delta) = font_image_delta {
-                self.state.tex_manager.write().unwrap().alloc(
-                    "font".into(),
-                    font_image_delta.image,
-                    TextureOptions::LINEAR,
-                );
+                let mut manager = self.state.tex_manager.write().unwrap();
+                if manager.num_allocated() == 0 {
+                    let delta = font_image_delta.clone();
+                    manager.alloc("fonts".into(), delta.image, TextureOptions::LINEAR);
+                }
+                manager.set(TextureId::default(), font_image_delta);
             }
 
             self.state.tex_manager.write().unwrap().take_delta()
         };
 
-        println!(
+        log::info!(
             "texture_delta: set {:?} free {:?}",
             texture_delta.set.len(),
             texture_delta.free.len()
         );
 
         for (id, delta) in texture_delta.set {
-            if !self.textures.is_empty() {
-                continue;
-            }
             let texture_handle = ctx.create_texture(
                 "fonts",
                 &ImageCreateInfo {
@@ -206,7 +199,9 @@ impl Renderer {
                         height: delta.image.height() as u32,
                         depth: 1,
                     },
-                    usage: vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
+                    usage: vk::ImageUsageFlags::TRANSFER_DST
+                        | vk::ImageUsageFlags::SAMPLED
+                        | vk::ImageUsageFlags::TRANSFER_SRC,
                     mip_levels: 1,
                     array_layers: 1,
                     samples: vk::SampleCountFlags::TYPE_1,
@@ -215,11 +210,16 @@ impl Renderer {
                     ..Default::default()
                 },
             );
-            let data = match delta.image {
+
+            println!("pos {:?}", delta.pos);
+            println!("size {:?}", delta.image.size());
+
+            let data = match delta.image.clone() {
                 epaint::ImageData::Color(image) => image.pixels,
                 epaint::ImageData::Font(font) => font.srgba_pixels(None).collect(),
             };
             let data = bytemuck::cast_slice(&data);
+
             let buffer_handle = ctx.create_buffer_with_data(
                 &BufferDescriptor {
                     debug_name: "fonts",
@@ -232,37 +232,139 @@ impl Renderer {
             );
             ctx.copy_buffer_to_texture(&buffer_handle, &texture_handle);
             drop(buffer_handle);
-            let view = ctx.get_texture_view(&texture_handle).unwrap();
-            unsafe {
-                let manager = ctx.get_pipeline_manager();
-                let pipeline = manager.get_graphics_pipeline(&self.pipeline_handle.id());
-                ctx.device.update_descriptor_sets(
-                    &[vk::WriteDescriptorSet::default()
-                        .dst_set(pipeline.descriptor_sets[0])
-                        .dst_binding(0)
-                        .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                        .image_info(std::slice::from_ref(
-                            &vk::DescriptorImageInfo::default()
-                                .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                                .image_view(*view)
-                                .sampler(
-                                    ctx.get_pipeline_manager()
-                                        .immutable_shader_info
-                                        .get_sampler(&SamplerDesc {
-                                            address_modes: vk::SamplerAddressMode::CLAMP_TO_EDGE,
-                                            mipmap_mode: vk::SamplerMipmapMode::LINEAR,
-                                            texel_filter: vk::Filter::LINEAR,
-                                        }),
-                                ),
-                        ))],
-                    &[],
+
+            // handle blitting of the updated font texture
+            if let Some(pos) = delta.pos {
+                let existing_delta = self.textures.get(&id).unwrap();
+                let existing_texture = ctx.texture_manager.get_mut(existing_delta.1.id()).unwrap();
+
+                ctx.record_submit(
+                    ctx.setup_command_buffer,
+                    ctx.setup_commands_reuse_fence,
+                    |ctx, command_buffer| unsafe {
+                        existing_texture.transition(
+                            &ctx.device,
+                            command_buffer,
+                            &TransitionDesc {
+                                new_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                                new_access_mask: vk::AccessFlags::TRANSFER_WRITE,
+                                new_stage_mask: vk::PipelineStageFlags::TRANSFER,
+                            },
+                        );
+
+                        let texture = ctx.texture_manager.get_mut(texture_handle.id()).unwrap();
+                        texture.transition(
+                            &ctx.device,
+                            command_buffer,
+                            &TransitionDesc {
+                                new_layout: vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                                new_access_mask: vk::AccessFlags::TRANSFER_READ,
+                                new_stage_mask: vk::PipelineStageFlags::TRANSFER,
+                            },
+                        );
+
+                        let top_left = vk::Offset3D {
+                            x: pos[0] as i32,
+                            y: pos[1] as i32,
+                            z: 0,
+                        };
+                        let bottom_right = vk::Offset3D {
+                            x: pos[0] as i32 + delta.image.width() as i32,
+                            y: pos[1] as i32 + delta.image.height() as i32,
+                            z: 1,
+                        };
+
+                        ctx.device.cmd_blit_image(
+                            command_buffer,
+                            texture.image,
+                            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                            existing_texture.image,
+                            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                            &[vk::ImageBlit {
+                                src_subresource: vk::ImageSubresourceLayers {
+                                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                                    mip_level: 0,
+                                    base_array_layer: 0,
+                                    layer_count: 1,
+                                },
+                                src_offsets: [
+                                    vk::Offset3D { x: 0, y: 0, z: 0 },
+                                    vk::Offset3D {
+                                        x: texture.extent.width as i32,
+                                        y: texture.extent.height as i32,
+                                        z: texture.extent.depth as i32,
+                                    },
+                                ],
+                                dst_subresource: vk::ImageSubresourceLayers {
+                                    aspect_mask: vk::ImageAspectFlags::COLOR,
+                                    mip_level: 0,
+                                    base_array_layer: 0,
+                                    layer_count: 1,
+                                },
+                                dst_offsets: [top_left, bottom_right],
+                            }],
+                            vk::Filter::NEAREST,
+                        );
+
+                        existing_texture.transition(
+                            &ctx.device,
+                            command_buffer,
+                            &TransitionDesc {
+                                new_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                                new_access_mask: vk::AccessFlags::SHADER_READ,
+                                new_stage_mask: vk::PipelineStageFlags::FRAGMENT_SHADER,
+                            },
+                        );
+                    },
                 );
+            } else {
+                let set = {
+                    let manager = ctx.get_pipeline_manager();
+                    let pipeline = manager.get_graphics_pipeline(&self.pipeline_handle.id());
+                    let dsc_alloc_info = vk::DescriptorSetAllocateInfo::default()
+                        .descriptor_pool(pipeline.descriptor_pool)
+                        .set_layouts(&pipeline.descriptor_set_layouts);
+                    unsafe {
+                        ctx.device
+                            .allocate_descriptor_sets(&dsc_alloc_info)
+                            .unwrap()[0]
+                    }
+                };
+
+                let view = ctx.get_texture_view(&texture_handle).unwrap();
+                unsafe {
+                    ctx.device.update_descriptor_sets(
+                        &[vk::WriteDescriptorSet::default()
+                            .dst_set(set)
+                            .dst_binding(0)
+                            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                            .image_info(std::slice::from_ref(
+                                &vk::DescriptorImageInfo::default()
+                                    .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                                    .image_view(*view)
+                                    .sampler(
+                                        ctx.get_pipeline_manager()
+                                            .immutable_shader_info
+                                            .get_sampler(&SamplerDesc {
+                                                address_modes:
+                                                    vk::SamplerAddressMode::CLAMP_TO_EDGE,
+                                                mipmap_mode: vk::SamplerMipmapMode::LINEAR,
+                                                texel_filter: vk::Filter::LINEAR,
+                                            }),
+                                    ),
+                            ))],
+                        &[],
+                    );
+                }
+
+                log::info!("inserting texture {:?} at id {:?}", texture_handle.id(), id);
+                self.textures.insert(id, (set, texture_handle));
             }
-
-            println!("inserting texture {:?} at id {:?}", texture_handle.id(), id);
-            self.textures.insert(id, texture_handle);
         }
+    }
 
+    #[tracing::instrument(name = "Renderer::render", skip_all)]
+    pub fn render(&mut self, ctx: &RenderContext) {
         let (font_tex_size, prepared_discs) = {
             let fonts = self.state.fonts.read().unwrap();
             let atlas = fonts.texture_atlas();
@@ -278,6 +380,8 @@ impl Renderer {
             self.shapes.clone(),
         );
 
+        self.update_textures(ctx);
+
         let mut draw_list = Vec::with_capacity(primitives.len());
         for primitive in primitives {
             match &primitive.primitive {
@@ -285,7 +389,7 @@ impl Renderer {
                     let vertex_buffer = ctx.create_buffer_with_data(
                         &BufferDescriptor {
                             debug_name: "vertices",
-                            location: MemoryLocation::CpuToGpu,
+                            location: MemoryLocation::GpuOnly,
                             usage: vk::BufferUsageFlags::VERTEX_BUFFER,
                             ..Default::default()
                         },
@@ -296,7 +400,7 @@ impl Renderer {
                     let index_buffer = ctx.create_buffer_with_data(
                         &BufferDescriptor {
                             debug_name: "indices",
-                            location: MemoryLocation::CpuToGpu,
+                            location: MemoryLocation::GpuOnly,
                             usage: vk::BufferUsageFlags::INDEX_BUFFER,
                             ..Default::default()
                         },
@@ -357,6 +461,16 @@ impl Renderer {
                 drop(swapchain);
 
                 for (vertex_handle, index_handle, indices_len, texture_id) in draw_list.iter() {
+                    log::info!("using texture {:?}", texture_id);
+                    ctx.device.cmd_bind_descriptor_sets(
+                        command_buffer,
+                        vk::PipelineBindPoint::GRAPHICS,
+                        pipeline.layout,
+                        0,
+                        std::slice::from_ref(&self.textures.get(texture_id).unwrap().0),
+                        &[],
+                    );
+
                     ctx.device.cmd_bind_vertex_buffers(
                         command_buffer,
                         0,

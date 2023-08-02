@@ -7,7 +7,7 @@ pub fn app(cx: Scope) -> Element {
 
     cx.render(rsx! {
       div {
-        class: "w-{count} h-500 bg-red-500",
+        class: "w-{count} h-800 bg-red-500",
 
 
           div {
@@ -17,7 +17,7 @@ pub fn app(cx: Scope) -> Element {
 
           div {
             onclick: move |_| count.modify(|v| {v.add(100)}),
-            "Hello world!"
+            "Test ''sdsdf90238409238409''sdfsdf"
           }
 
           // img {

@@ -182,7 +182,7 @@ impl MediaDecoder {
                         (oldest_frame_in_queue - current_audio_time) as u32,
                     );
 
-                    log::info!("sleeping for {:?}", sleep_time);
+                    log::debug!("sleeping for {:?}", sleep_time);
                     spin_sleep::sleep(sleep_time);
                 }
 
