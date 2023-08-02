@@ -20,7 +20,7 @@ pub(crate) struct ImageExtractor {
  */
 #[partial_derive_state]
 impl State for ImageExtractor {
-    type ChildDependencies = (Self,);
+    type ChildDependencies = ();
     type ParentDependencies = ();
     type NodeDependencies = ();
 
@@ -35,6 +35,7 @@ impl State for ImageExtractor {
         _: Vec<<Self::ChildDependencies as Dependancy>::ElementBorrowed<'a>>,
         context: &SendAnyMap,
     ) -> bool {
+        println!("{:?}", self);
         let Some(src_attr) = node_view
             .attributes()
             .into_iter()

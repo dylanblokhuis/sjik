@@ -194,6 +194,20 @@ impl Renderer {
             texture_delta.free.len()
         );
 
+        // free textures
+        {
+            let manager = ctx.get_pipeline_manager();
+            let pipeline = manager.get_graphics_pipeline(&self.pipeline_handle.id());
+            for id in texture_delta.free {
+                let (set, _) = self.textures.remove(&id).unwrap();
+                unsafe {
+                    ctx.device
+                        .free_descriptor_sets(pipeline.descriptor_pool, &[set])
+                        .unwrap();
+                }
+            }
+        }
+
         for (id, delta) in texture_delta.set {
             let texture_handle = ctx.create_texture(
                 "fonts",
@@ -464,7 +478,7 @@ impl Renderer {
                 drop(swapchain);
 
                 for (vertex_handle, index_handle, indices_len, texture_id) in draw_list.iter() {
-                    log::info!("using texture {:?}", texture_id);
+                    // log::info!("using texture {:?}", texture_id);
                     ctx.device.cmd_bind_descriptor_sets(
                         command_buffer,
                         vk::PipelineBindPoint::GRAPHICS,

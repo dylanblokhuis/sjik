@@ -55,6 +55,8 @@ impl State for Tailwind {
         let mut taffy = taffy.lock().unwrap();
         let mut changed = false;
 
+        println!("{:?}", self);
+
         if let Some(text) = node_view.text() {
             // we just need the size of this shape for the layout
             // hence no colors being used
