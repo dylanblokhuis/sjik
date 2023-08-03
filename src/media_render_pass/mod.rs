@@ -2,14 +2,13 @@ use beuk::ash::vk::{
     self, BufferUsageFlags, DeviceSize, ImageCreateInfo, PipelineVertexInputStateCreateInfo,
     SamplerYcbcrConversionInfo,
 };
-use beuk::buffer::{Buffer, BufferDescriptor};
+use beuk::buffer::{Buffer, BufferDescriptor, MemoryLocation};
 use beuk::ctx::SamplerDesc;
-use beuk::memory::MemoryLocation;
-use beuk::memory2::ResourceHandle;
+use beuk::memory::ResourceHandle;
+use beuk::pipeline::GraphicsPipeline;
 use beuk::texture::Texture;
 use beuk::{
     ctx::RenderContext,
-    memory::PipelineHandle,
     pipeline::{GraphicsPipelineDescriptor, PrimitiveState},
     shaders::Shader,
 };
@@ -30,7 +29,7 @@ struct Uniform {
 }
 
 pub struct MediaRenderPass {
-    pipeline_handle: Option<PipelineHandle>,
+    pipeline_handle: Option<ResourceHandle<GraphicsPipeline>>,
     vertex_buffer: ResourceHandle<Buffer>,
     index_buffer: ResourceHandle<Buffer>,
     pub yuv: Option<ResourceHandle<Texture>>,
@@ -195,11 +194,7 @@ void main() {
                     stride: std::mem::size_of::<Vertex>() as u32,
                     input_rate: vk::VertexInputRate::VERTEX,
                 }]),
-            color_attachment_formats: &[ctx
-                .texture_manager
-                .get(self.attachment.id())
-                .unwrap()
-                .format],
+            color_attachment_formats: &[ctx.texture_manager.get(&self.attachment).unwrap().format],
             depth_attachment_format: vk::Format::UNDEFINED,
             viewport: None,
             primitive: PrimitiveState {
@@ -243,25 +238,24 @@ void main() {
         );
 
         {
-            let uniform = ctx.buffer_manager.get(uniform_handle.id()).unwrap();
-            let texture = ctx.texture_manager.get(yuv.id()).unwrap();
+            let uniform = ctx.buffer_manager.get(&uniform_handle).unwrap();
+            let texture = ctx.texture_manager.get(&yuv).unwrap();
 
-            let mut pipeline_manager = ctx.pipeline_manager.write().unwrap();
-            let (sampler_conversion, _) = pipeline_manager
-                .immutable_shader_info
-                .get_yuv_conversion_sampler(
-                    &ctx.device,
+            let (sampler_conversion, _) = ctx
+                .yuv_immutable_samplers
+                .get(&(
+                    video_format,
                     SamplerDesc {
                         texel_filter: vk::Filter::LINEAR,
                         mipmap_mode: vk::SamplerMipmapMode::LINEAR,
                         address_modes: vk::SamplerAddressMode::CLAMP_TO_EDGE,
                     },
-                    video_format,
-                );
+                ))
+                .unwrap();
 
             let view = unsafe {
                 let mut conversion_info =
-                    SamplerYcbcrConversionInfo::default().conversion(sampler_conversion);
+                    SamplerYcbcrConversionInfo::default().conversion(*sampler_conversion);
 
                 ctx.device.create_image_view(
                     &vk::ImageViewCreateInfo {
@@ -287,7 +281,7 @@ void main() {
                 )
             }
             .unwrap();
-            let pipeline = pipeline_manager.get_graphics_pipeline(&pipeline_handle.id());
+            let pipeline = ctx.graphics_pipelines.get(&pipeline_handle).unwrap();
             unsafe {
                 ctx.device.update_descriptor_sets(
                     &[
@@ -384,8 +378,8 @@ void main() {
             ctx.setup_command_buffer,
             ctx.setup_commands_reuse_fence,
             |ctx, command_buffer| unsafe {
-                let texture = ctx.texture_manager.get(yuv.id()).unwrap();
-                let frame_buffer = ctx.buffer_manager.get(frame_buffer.id()).unwrap();
+                let texture = ctx.texture_manager.get(&yuv).unwrap();
+                let frame_buffer = ctx.buffer_manager.get(&frame_buffer).unwrap();
 
                 let layout_transition_barriers = vk::ImageMemoryBarrier::default()
                     .image(texture.image)
@@ -493,8 +487,8 @@ void main() {
             ctx.setup_command_buffer,
             ctx.setup_commands_reuse_fence,
             |ctx, command_buffer| unsafe {
-                let texture = ctx.texture_manager.get(yuv.id()).unwrap();
-                let frame_buffer = ctx.buffer_manager.get(frame_buffer.id()).unwrap();
+                let texture = ctx.texture_manager.get(&yuv).unwrap();
+                let frame_buffer = ctx.buffer_manager.get(&frame_buffer).unwrap();
 
                 let layout_transition_barriers = vk::ImageMemoryBarrier::default()
                     .image(texture.image)
@@ -592,7 +586,7 @@ void main() {
     pub fn draw(&self, ctx: &RenderContext, frame: &[u8]) {
         let buffer = ctx
             .buffer_manager
-            .get_mut(self.frame_buffer.as_ref().unwrap().id())
+            .get_mut(self.frame_buffer.as_ref().unwrap())
             .unwrap();
         buffer.copy_from_slice(frame, 0);
         log::debug!("Copying frame to gpu");
@@ -615,27 +609,21 @@ void main() {
 
                 ctx.begin_rendering(command_buffer, color_attachments, None);
 
-                let manager = ctx.pipeline_manager.read().unwrap();
-                let pipeline =
-                    manager.get_graphics_pipeline(&self.pipeline_handle.as_ref().unwrap().id());
-                pipeline.bind(&ctx.device, command_buffer);
+                ctx.graphics_pipelines
+                    .get(&self.pipeline_handle.as_ref().unwrap())
+                    .unwrap()
+                    .bind(&ctx.device, command_buffer);
                 ctx.device.cmd_bind_vertex_buffers(
                     command_buffer,
                     0,
                     std::slice::from_ref(
-                        &ctx.buffer_manager
-                            .get(self.vertex_buffer.id())
-                            .unwrap()
-                            .buffer,
+                        &ctx.buffer_manager.get(&self.vertex_buffer).unwrap().buffer,
                     ),
                     &[0],
                 );
                 ctx.device.cmd_bind_index_buffer(
                     command_buffer,
-                    ctx.buffer_manager
-                        .get(self.index_buffer.id())
-                        .unwrap()
-                        .buffer,
+                    ctx.buffer_manager.get(&self.index_buffer).unwrap().buffer,
                     0,
                     vk::IndexType::UINT32,
                 );

@@ -1,15 +1,14 @@
 use beuk::{
     ash::vk::{self, BufferUsageFlags, DeviceSize, PipelineVertexInputStateCreateInfo},
-    buffer::{Buffer, BufferDescriptor},
+    buffer::{Buffer, BufferDescriptor, MemoryLocation},
     ctx::{RenderContext, SamplerDesc},
-    memory::{MemoryLocation, PipelineHandle},
-    memory2::ResourceHandle,
-    pipeline::{GraphicsPipelineDescriptor, PrimitiveState},
+    memory::ResourceHandle,
+    pipeline::{GraphicsPipeline, GraphicsPipelineDescriptor, PrimitiveState},
     texture::Texture,
 };
 
 pub struct PresentRenderPass {
-    pipeline_handle: PipelineHandle,
+    pipeline_handle: ResourceHandle<GraphicsPipeline>,
     vertex_buffer: ResourceHandle<Buffer>,
     index_buffer: ResourceHandle<Buffer>,
 }
@@ -137,8 +136,7 @@ impl PresentRenderPass {
         media_attachment: ResourceHandle<Texture>,
         present_index: u32,
     ) {
-        let manager = ctx.get_pipeline_manager();
-        let pipeline = manager.get_graphics_pipeline(&self.pipeline_handle.id());
+        let pipeline = ctx.graphics_pipelines.get(&self.pipeline_handle).unwrap();
         unsafe {
             ctx.device.update_descriptor_sets(
                 &[
@@ -151,13 +149,13 @@ impl PresentRenderPass {
                                 .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                                 .image_view(*ctx.get_texture_view(&ui_attachment).unwrap())
                                 .sampler(
-                                    ctx.get_pipeline_manager()
-                                        .immutable_shader_info
-                                        .get_sampler(&SamplerDesc {
+                                    *ctx.immutable_samplers
+                                        .get(&SamplerDesc {
                                             address_modes: vk::SamplerAddressMode::CLAMP_TO_EDGE,
                                             mipmap_mode: vk::SamplerMipmapMode::LINEAR,
                                             texel_filter: vk::Filter::LINEAR,
-                                        }),
+                                        })
+                                        .unwrap(),
                                 ),
                         )),
                     vk::WriteDescriptorSet::default()
@@ -169,13 +167,13 @@ impl PresentRenderPass {
                                 .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                                 .image_view(*ctx.get_texture_view(&media_attachment).unwrap())
                                 .sampler(
-                                    ctx.get_pipeline_manager()
-                                        .immutable_shader_info
-                                        .get_sampler(&SamplerDesc {
+                                    *ctx.immutable_samplers
+                                        .get(&SamplerDesc {
                                             address_modes: vk::SamplerAddressMode::CLAMP_TO_EDGE,
                                             mipmap_mode: vk::SamplerMipmapMode::LINEAR,
                                             texel_filter: vk::Filter::LINEAR,
-                                        }),
+                                        })
+                                        .unwrap(),
                                 ),
                         )),
                 ],
@@ -204,19 +202,13 @@ impl PresentRenderPass {
                     command_buffer,
                     0,
                     std::slice::from_ref(
-                        &ctx.buffer_manager
-                            .get(self.vertex_buffer.id())
-                            .unwrap()
-                            .buffer,
+                        &ctx.buffer_manager.get(&self.vertex_buffer).unwrap().buffer,
                     ),
                     &[0],
                 );
                 ctx.device.cmd_bind_index_buffer(
                     command_buffer,
-                    ctx.buffer_manager
-                        .get(self.index_buffer.id())
-                        .unwrap()
-                        .buffer,
+                    ctx.buffer_manager.get(&self.index_buffer).unwrap().buffer,
                     0,
                     vk::IndexType::UINT32,
                 );

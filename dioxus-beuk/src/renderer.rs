@@ -5,13 +5,12 @@ use beuk::ash::vk::{
     self, DescriptorSet, ImageCreateInfo, PipelineVertexInputStateCreateInfo, PushConstantRange,
     ShaderStageFlags,
 };
-use beuk::buffer::BufferDescriptor;
+use beuk::buffer::{BufferDescriptor, MemoryLocation};
+use beuk::ctx::RenderContext;
 use beuk::ctx::SamplerDesc;
-use beuk::memory::MemoryLocation;
-use beuk::memory2::ResourceHandle;
-use beuk::pipeline::{BlendState, MultisampleState};
+use beuk::memory::ResourceHandle;
+use beuk::pipeline::{BlendState, GraphicsPipeline, MultisampleState};
 use beuk::texture::{Texture, TransitionDesc};
-use beuk::{ctx::RenderContext, memory::PipelineHandle};
 use beuk::{
     pipeline::{GraphicsPipelineDescriptor, PrimitiveState},
     shaders::Shader,
@@ -29,7 +28,7 @@ pub struct PushConstants {
 }
 
 pub struct Renderer {
-    pub pipeline_handle: PipelineHandle,
+    pub pipeline_handle: ResourceHandle<GraphicsPipeline>,
     pub attachment_handle: ResourceHandle<Texture>,
     pub multisampled_handle: Option<ResourceHandle<Texture>>,
     pub shapes: Vec<epaint::ClippedShape>,
@@ -196,8 +195,7 @@ impl Renderer {
 
         // free textures
         {
-            let manager = ctx.get_pipeline_manager();
-            let pipeline = manager.get_graphics_pipeline(&self.pipeline_handle.id());
+            let pipeline = ctx.graphics_pipelines.get(&self.pipeline_handle).unwrap();
             for id in texture_delta.free {
                 let (set, _) = self.textures.remove(&id).unwrap();
                 unsafe {
@@ -253,7 +251,7 @@ impl Renderer {
             // handle blitting of the updated font texture
             if let Some(pos) = delta.pos {
                 let existing_delta = self.textures.get(&id).unwrap();
-                let existing_texture = ctx.texture_manager.get_mut(existing_delta.1.id()).unwrap();
+                let existing_texture = ctx.texture_manager.get_mut(&existing_delta.1).unwrap();
 
                 ctx.record_submit(
                     ctx.setup_command_buffer,
@@ -269,7 +267,7 @@ impl Renderer {
                             },
                         );
 
-                        let texture = ctx.texture_manager.get_mut(texture_handle.id()).unwrap();
+                        let texture = ctx.texture_manager.get_mut(&texture_handle).unwrap();
                         texture.transition(
                             &ctx.device,
                             command_buffer,
@@ -336,8 +334,7 @@ impl Renderer {
                 );
             } else {
                 let set = {
-                    let manager = ctx.get_pipeline_manager();
-                    let pipeline = manager.get_graphics_pipeline(&self.pipeline_handle.id());
+                    let pipeline = ctx.graphics_pipelines.get(&self.pipeline_handle).unwrap();
                     let dsc_alloc_info = vk::DescriptorSetAllocateInfo::default()
                         .descriptor_pool(pipeline.descriptor_pool)
                         .set_layouts(&pipeline.descriptor_set_layouts);
@@ -360,14 +357,14 @@ impl Renderer {
                                     .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                                     .image_view(*view)
                                     .sampler(
-                                        ctx.get_pipeline_manager()
-                                            .immutable_shader_info
-                                            .get_sampler(&SamplerDesc {
+                                        *ctx.immutable_samplers
+                                            .get(&SamplerDesc {
                                                 address_modes:
                                                     vk::SamplerAddressMode::CLAMP_TO_EDGE,
                                                 mipmap_mode: vk::SamplerMipmapMode::LINEAR,
                                                 texel_filter: vk::Filter::LINEAR,
-                                            }),
+                                            })
+                                            .unwrap(),
                                     ),
                             ))],
                         &[],
@@ -459,8 +456,7 @@ impl Renderer {
 
                 ctx.begin_rendering(command_buffer, color_attachments, None);
 
-                let manager = ctx.get_pipeline_manager();
-                let pipeline = manager.get_graphics_pipeline(&self.pipeline_handle.id());
+                let pipeline = ctx.graphics_pipelines.get(&self.pipeline_handle).unwrap();
                 pipeline.bind(&ctx.device, command_buffer);
                 let swapchain = ctx.get_swapchain();
                 ctx.device.cmd_push_constants(
@@ -492,13 +488,13 @@ impl Renderer {
                         command_buffer,
                         0,
                         std::slice::from_ref(
-                            &ctx.buffer_manager.get(vertex_handle.id()).unwrap().buffer,
+                            &ctx.buffer_manager.get(&vertex_handle).unwrap().buffer,
                         ),
                         &[0],
                     );
                     ctx.device.cmd_bind_index_buffer(
                         command_buffer,
-                        ctx.buffer_manager.get(index_handle.id()).unwrap().buffer,
+                        ctx.buffer_manager.get(&index_handle).unwrap().buffer,
                         0,
                         vk::IndexType::UINT32,
                     );
@@ -515,14 +511,10 @@ impl Renderer {
                 ctx.draw_command_buffer,
                 ctx.draw_commands_reuse_fence,
                 |ctx, command_buffer| unsafe {
-                    let src_image = ctx
-                        .texture_manager
-                        .get(multisampled_handle.id())
-                        .unwrap()
-                        .image;
+                    let src_image = ctx.texture_manager.get(&multisampled_handle).unwrap().image;
                     let dst_image = ctx
                         .texture_manager
-                        .get(self.attachment_handle.id())
+                        .get(&self.attachment_handle)
                         .unwrap()
                         .image;
 

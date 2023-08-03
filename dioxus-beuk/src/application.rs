@@ -1,6 +1,6 @@
 use beuk::ctx::RenderContext;
 
-use beuk::memory2::ResourceHandle;
+use beuk::memory::ResourceHandle;
 use beuk::texture::Texture;
 use dioxus::prelude::{Element, Scope, VirtualDom};
 use epaint::text::FontDefinitions;
