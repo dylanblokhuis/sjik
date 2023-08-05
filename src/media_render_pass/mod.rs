@@ -374,104 +374,97 @@ void main() {
             return;
         };
 
-        ctx.record(
-            ctx.setup_command_buffer,
-            ctx.setup_commands_reuse_fence,
-            |ctx, command_buffer| unsafe {
-                let texture = ctx.texture_manager.get(&yuv).unwrap();
-                let frame_buffer = ctx.buffer_manager.get(&frame_buffer).unwrap();
+        ctx.record_submit(|ctx, command_buffer| unsafe {
+            let texture = ctx.texture_manager.get(&yuv).unwrap();
+            let frame_buffer = ctx.buffer_manager.get(&frame_buffer).unwrap();
 
-                let layout_transition_barriers = vk::ImageMemoryBarrier::default()
-                    .image(texture.image)
-                    .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_READ)
-                    .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
-                    .old_layout(vk::ImageLayout::UNDEFINED)
-                    .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-                    .subresource_range(
-                        vk::ImageSubresourceRange::default()
-                            .aspect_mask(
-                                vk::ImageAspectFlags::PLANE_0 | vk::ImageAspectFlags::PLANE_1,
-                            )
-                            .layer_count(1)
-                            .level_count(1),
-                    );
-
-                ctx.device.cmd_pipeline_barrier(
-                    command_buffer,
-                    vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                    vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                    vk::DependencyFlags::empty(),
-                    &[],
-                    &[],
-                    &[layout_transition_barriers],
+            let layout_transition_barriers = vk::ImageMemoryBarrier::default()
+                .image(texture.image)
+                .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_READ)
+                .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
+                .old_layout(vk::ImageLayout::UNDEFINED)
+                .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                .subresource_range(
+                    vk::ImageSubresourceRange::default()
+                        .aspect_mask(vk::ImageAspectFlags::PLANE_0 | vk::ImageAspectFlags::PLANE_1)
+                        .layer_count(1)
+                        .level_count(1),
                 );
 
-                let y_plane_size = (texture.extent.width * texture.extent.height) as usize;
+            ctx.device.cmd_pipeline_barrier(
+                command_buffer,
+                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                &[layout_transition_barriers],
+            );
 
-                // println!("copy y_plane {:?}", y_plane_size);
-                // println!("copy uv_plane {:?}", uv_plane_size);
+            let y_plane_size = (texture.extent.width * texture.extent.height) as usize;
 
-                ctx.device.cmd_copy_buffer_to_image(
-                    command_buffer,
-                    frame_buffer.buffer,
-                    texture.image,
-                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                    &[vk::BufferImageCopy::default()
-                        .buffer_offset(0)
-                        .buffer_row_length(0)
-                        .buffer_image_height(0)
-                        .image_subresource(vk::ImageSubresourceLayers {
-                            aspect_mask: vk::ImageAspectFlags::PLANE_0,
-                            layer_count: 1,
-                            ..Default::default()
-                        })
-                        .image_extent(texture.extent)],
-                );
+            // println!("copy y_plane {:?}", y_plane_size);
+            // println!("copy uv_plane {:?}", uv_plane_size);
 
-                ctx.device.cmd_copy_buffer_to_image(
-                    command_buffer,
-                    frame_buffer.buffer,
-                    texture.image,
-                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                    &[vk::BufferImageCopy::default()
-                        .buffer_offset(y_plane_size as DeviceSize)
-                        .buffer_row_length(0)
-                        .buffer_image_height(0)
-                        .image_subresource(vk::ImageSubresourceLayers {
-                            aspect_mask: vk::ImageAspectFlags::PLANE_1,
-                            layer_count: 1,
-                            ..Default::default()
-                        })
-                        .image_extent(vk::Extent3D {
-                            width: texture.extent.width / 2,
-                            height: texture.extent.height / 2,
-                            depth: 1,
-                        })],
-                );
+            ctx.device.cmd_copy_buffer_to_image(
+                command_buffer,
+                frame_buffer.buffer,
+                texture.image,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &[vk::BufferImageCopy::default()
+                    .buffer_offset(0)
+                    .buffer_row_length(0)
+                    .buffer_image_height(0)
+                    .image_subresource(vk::ImageSubresourceLayers {
+                        aspect_mask: vk::ImageAspectFlags::PLANE_0,
+                        layer_count: 1,
+                        ..Default::default()
+                    })
+                    .image_extent(texture.extent)],
+            );
 
-                // ctx.device.cmd_copy_buffer_to_image(
-                //     command_buffer,
-                //     frame_buffer.buffer,
-                //     texture.image,
-                //     vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                //     &[vk::BufferImageCopy::default()
-                //         .buffer_offset((y_plane_size + uv_plane_size) as DeviceSize)
-                //         .buffer_row_length(0)
-                //         .buffer_image_height(0)
-                //         .image_subresource(vk::ImageSubresourceLayers {
-                //             aspect_mask: vk::ImageAspectFlags::PLANE_2,
-                //             layer_count: 1,
-                //             ..Default::default()
-                //         })
-                //         .image_extent(vk::Extent3D {
-                //             width: texture.extent.width / 2,
-                //             height: texture.extent.height / 2,
-                //             depth: 1,
-                //         })],
-                // );
-            },
-        );
-        ctx.submit(&ctx.setup_command_buffer, ctx.setup_commands_reuse_fence);
+            ctx.device.cmd_copy_buffer_to_image(
+                command_buffer,
+                frame_buffer.buffer,
+                texture.image,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &[vk::BufferImageCopy::default()
+                    .buffer_offset(y_plane_size as DeviceSize)
+                    .buffer_row_length(0)
+                    .buffer_image_height(0)
+                    .image_subresource(vk::ImageSubresourceLayers {
+                        aspect_mask: vk::ImageAspectFlags::PLANE_1,
+                        layer_count: 1,
+                        ..Default::default()
+                    })
+                    .image_extent(vk::Extent3D {
+                        width: texture.extent.width / 2,
+                        height: texture.extent.height / 2,
+                        depth: 1,
+                    })],
+            );
+
+            // ctx.device.cmd_copy_buffer_to_image(
+            //     command_buffer,
+            //     frame_buffer.buffer,
+            //     texture.image,
+            //     vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            //     &[vk::BufferImageCopy::default()
+            //         .buffer_offset((y_plane_size + uv_plane_size) as DeviceSize)
+            //         .buffer_row_length(0)
+            //         .buffer_image_height(0)
+            //         .image_subresource(vk::ImageSubresourceLayers {
+            //             aspect_mask: vk::ImageAspectFlags::PLANE_2,
+            //             layer_count: 1,
+            //             ..Default::default()
+            //         })
+            //         .image_extent(vk::Extent3D {
+            //             width: texture.extent.width / 2,
+            //             height: texture.extent.height / 2,
+            //             depth: 1,
+            //         })],
+            // );
+        });
     }
 
     pub fn copy_yuv420_10_frame_to_gpu(&self, ctx: &RenderContext) {
@@ -483,103 +476,98 @@ void main() {
             return;
         };
 
-        ctx.record(
-            ctx.setup_command_buffer,
-            ctx.setup_commands_reuse_fence,
-            |ctx, command_buffer| unsafe {
-                let texture = ctx.texture_manager.get(&yuv).unwrap();
-                let frame_buffer = ctx.buffer_manager.get(&frame_buffer).unwrap();
+        ctx.record_submit(|ctx, command_buffer| unsafe {
+            let texture = ctx.texture_manager.get(&yuv).unwrap();
+            let frame_buffer = ctx.buffer_manager.get(&frame_buffer).unwrap();
 
-                let layout_transition_barriers = vk::ImageMemoryBarrier::default()
-                    .image(texture.image)
-                    .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_READ)
-                    .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
-                    .old_layout(vk::ImageLayout::UNDEFINED)
-                    .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-                    .subresource_range(
-                        vk::ImageSubresourceRange::default()
-                            .aspect_mask(
-                                vk::ImageAspectFlags::PLANE_0
-                                    | vk::ImageAspectFlags::PLANE_1
-                                    | vk::ImageAspectFlags::PLANE_2,
-                            )
-                            .layer_count(1)
-                            .level_count(1),
-                    );
-
-                ctx.device.cmd_pipeline_barrier(
-                    command_buffer,
-                    vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                    vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                    vk::DependencyFlags::empty(),
-                    &[],
-                    &[],
-                    &[layout_transition_barriers],
+            let layout_transition_barriers = vk::ImageMemoryBarrier::default()
+                .image(texture.image)
+                .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_READ)
+                .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
+                .old_layout(vk::ImageLayout::UNDEFINED)
+                .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                .subresource_range(
+                    vk::ImageSubresourceRange::default()
+                        .aspect_mask(
+                            vk::ImageAspectFlags::PLANE_0
+                                | vk::ImageAspectFlags::PLANE_1
+                                | vk::ImageAspectFlags::PLANE_2,
+                        )
+                        .layer_count(1)
+                        .level_count(1),
                 );
 
-                ctx.device.cmd_copy_buffer_to_image(
-                    command_buffer,
-                    frame_buffer.buffer,
-                    texture.image,
-                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                    &[vk::BufferImageCopy::default()
-                        .buffer_offset(0)
-                        .buffer_row_length(0)
-                        .buffer_image_height(0)
-                        .image_subresource(vk::ImageSubresourceLayers {
-                            aspect_mask: vk::ImageAspectFlags::PLANE_0,
-                            layer_count: 1,
-                            ..Default::default()
-                        })
-                        .image_extent(texture.extent)],
-                );
+            ctx.device.cmd_pipeline_barrier(
+                command_buffer,
+                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                &[layout_transition_barriers],
+            );
 
-                let y_plane_size = texture.extent.width * texture.extent.height;
+            ctx.device.cmd_copy_buffer_to_image(
+                command_buffer,
+                frame_buffer.buffer,
+                texture.image,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &[vk::BufferImageCopy::default()
+                    .buffer_offset(0)
+                    .buffer_row_length(0)
+                    .buffer_image_height(0)
+                    .image_subresource(vk::ImageSubresourceLayers {
+                        aspect_mask: vk::ImageAspectFlags::PLANE_0,
+                        layer_count: 1,
+                        ..Default::default()
+                    })
+                    .image_extent(texture.extent)],
+            );
 
-                ctx.device.cmd_copy_buffer_to_image(
-                    command_buffer,
-                    frame_buffer.buffer,
-                    texture.image,
-                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                    &[vk::BufferImageCopy::default()
-                        .buffer_offset(y_plane_size as DeviceSize)
-                        .buffer_row_length(0)
-                        .buffer_image_height(0)
-                        .image_subresource(vk::ImageSubresourceLayers {
-                            aspect_mask: vk::ImageAspectFlags::PLANE_1,
-                            layer_count: 1,
-                            ..Default::default()
-                        })
-                        .image_extent(vk::Extent3D {
-                            width: texture.extent.width / 2,
-                            height: texture.extent.height / 2,
-                            depth: 1,
-                        })],
-                );
+            let y_plane_size = texture.extent.width * texture.extent.height;
 
-                ctx.device.cmd_copy_buffer_to_image(
-                    command_buffer,
-                    frame_buffer.buffer,
-                    texture.image,
-                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                    &[vk::BufferImageCopy::default()
-                        .buffer_offset(y_plane_size as DeviceSize * 2)
-                        .buffer_row_length(0)
-                        .buffer_image_height(0)
-                        .image_subresource(vk::ImageSubresourceLayers {
-                            aspect_mask: vk::ImageAspectFlags::PLANE_2,
-                            layer_count: 1,
-                            ..Default::default()
-                        })
-                        .image_extent(vk::Extent3D {
-                            width: texture.extent.width / 2,
-                            height: texture.extent.height / 2,
-                            depth: 1,
-                        })],
-                );
-            },
-        );
-        ctx.submit(&ctx.setup_command_buffer, ctx.setup_commands_reuse_fence);
+            ctx.device.cmd_copy_buffer_to_image(
+                command_buffer,
+                frame_buffer.buffer,
+                texture.image,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &[vk::BufferImageCopy::default()
+                    .buffer_offset(y_plane_size as DeviceSize)
+                    .buffer_row_length(0)
+                    .buffer_image_height(0)
+                    .image_subresource(vk::ImageSubresourceLayers {
+                        aspect_mask: vk::ImageAspectFlags::PLANE_1,
+                        layer_count: 1,
+                        ..Default::default()
+                    })
+                    .image_extent(vk::Extent3D {
+                        width: texture.extent.width / 2,
+                        height: texture.extent.height / 2,
+                        depth: 1,
+                    })],
+            );
+
+            ctx.device.cmd_copy_buffer_to_image(
+                command_buffer,
+                frame_buffer.buffer,
+                texture.image,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                &[vk::BufferImageCopy::default()
+                    .buffer_offset(y_plane_size as DeviceSize * 2)
+                    .buffer_row_length(0)
+                    .buffer_image_height(0)
+                    .image_subresource(vk::ImageSubresourceLayers {
+                        aspect_mask: vk::ImageAspectFlags::PLANE_2,
+                        layer_count: 1,
+                        ..Default::default()
+                    })
+                    .image_extent(vk::Extent3D {
+                        width: texture.extent.width / 2,
+                        height: texture.extent.height / 2,
+                        depth: 1,
+                    })],
+            );
+        });
     }
 
     #[tracing::instrument(name = "MediaRenderPass::draw", skip_all)]
@@ -592,46 +580,38 @@ void main() {
         log::debug!("Copying frame to gpu");
         self.copy_yuv420_frame_to_gpu(ctx);
 
-        ctx.record(
-            ctx.draw_command_buffer,
-            ctx.draw_commands_reuse_fence,
-            |ctx, command_buffer| unsafe {
-                let color_attachments = &[vk::RenderingAttachmentInfo::default()
-                    .image_view(*ctx.get_texture_view(&self.attachment).unwrap())
-                    .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                    .load_op(vk::AttachmentLoadOp::CLEAR)
-                    .store_op(vk::AttachmentStoreOp::STORE)
-                    .clear_value(vk::ClearValue {
-                        color: vk::ClearColorValue {
-                            float32: [0.0, 0.0, 0.0, 1.0],
-                        },
-                    })];
+        ctx.record_submit(|ctx, command_buffer| unsafe {
+            let color_attachments = &[vk::RenderingAttachmentInfo::default()
+                .image_view(*ctx.get_texture_view(&self.attachment).unwrap())
+                .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                .load_op(vk::AttachmentLoadOp::CLEAR)
+                .store_op(vk::AttachmentStoreOp::STORE)
+                .clear_value(vk::ClearValue {
+                    color: vk::ClearColorValue {
+                        float32: [0.0, 0.0, 0.0, 1.0],
+                    },
+                })];
 
-                ctx.begin_rendering(command_buffer, color_attachments, None);
+            ctx.begin_rendering(command_buffer, color_attachments, None);
 
-                ctx.graphics_pipelines
-                    .get(&self.pipeline_handle.as_ref().unwrap())
-                    .unwrap()
-                    .bind(&ctx.device, command_buffer);
-                ctx.device.cmd_bind_vertex_buffers(
-                    command_buffer,
-                    0,
-                    std::slice::from_ref(
-                        &ctx.buffer_manager.get(&self.vertex_buffer).unwrap().buffer,
-                    ),
-                    &[0],
-                );
-                ctx.device.cmd_bind_index_buffer(
-                    command_buffer,
-                    ctx.buffer_manager.get(&self.index_buffer).unwrap().buffer,
-                    0,
-                    vk::IndexType::UINT32,
-                );
-                ctx.device.cmd_draw_indexed(command_buffer, 6, 1, 0, 0, 1);
-                ctx.end_rendering(command_buffer);
-            },
-        );
-
-        ctx.submit(&ctx.draw_command_buffer, ctx.draw_commands_reuse_fence);
+            ctx.graphics_pipelines
+                .get(&self.pipeline_handle.as_ref().unwrap())
+                .unwrap()
+                .bind(&ctx.device, command_buffer);
+            ctx.device.cmd_bind_vertex_buffers(
+                command_buffer,
+                0,
+                std::slice::from_ref(&ctx.buffer_manager.get(&self.vertex_buffer).unwrap().buffer),
+                &[0],
+            );
+            ctx.device.cmd_bind_index_buffer(
+                command_buffer,
+                ctx.buffer_manager.get(&self.index_buffer).unwrap().buffer,
+                0,
+                vk::IndexType::UINT32,
+            );
+            ctx.device.cmd_draw_indexed(command_buffer, 6, 1, 0, 0, 1);
+            ctx.end_rendering(command_buffer);
+        });
     }
 }

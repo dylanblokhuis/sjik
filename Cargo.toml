@@ -6,7 +6,7 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-beuk = { git = "https://github.com/dylanblokhuis/beuk", rev = "c561454f78302e8ed2cf52c121498e469a39bba2" }
+beuk = { git = "https://github.com/dylanblokhuis/beuk", rev = "91655330cc3d5a24df8b99105a2c29364f351b8e" }
 tao = { version = "0.21.0", features = ["serde"] }
 bytemuck = { version = "1.13", features = ["derive"] }
 stainless_ffmpeg = { path = "./stainless-ffmpeg" }

@@ -35,7 +35,6 @@ impl State for ImageExtractor {
         _: Vec<<Self::ChildDependencies as Dependancy>::ElementBorrowed<'a>>,
         context: &SendAnyMap,
     ) -> bool {
-        println!("{:?}", self);
         let Some(src_attr) = node_view
             .attributes()
             .into_iter()
@@ -51,7 +50,7 @@ impl State for ImageExtractor {
 
         let state: &RendererState = context.get().unwrap();
         if self.texture_id != epaint::TextureId::default() {
-            println!("Freeing texture: {:?}", self.texture_id);
+            log::debug!("Freeing texture: {:?}", self.texture_id);
             let mut manager = state.tex_manager.write().unwrap();
             manager.free(self.texture_id);
         }

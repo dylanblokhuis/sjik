@@ -19,7 +19,7 @@ pub mod hot_reload {
     pub use dioxus_hot_reload::*;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Redraw;
 
 type TaoEvent<'a> = Event<'a, Redraw>;

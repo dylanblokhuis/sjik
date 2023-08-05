@@ -105,8 +105,6 @@ impl DioxusApp {
         // the window size is zero when minimized which causes the renderer to panic
         if size.width > 0 && size.height > 0 {
             self.dom.set_size(size);
-            // self.render_context
-            //     .resize_surface(&mut self.surface, size.width, size.height);
         }
     }
 

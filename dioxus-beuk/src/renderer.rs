@@ -253,85 +253,81 @@ impl Renderer {
                 let existing_delta = self.textures.get(&id).unwrap();
                 let existing_texture = ctx.texture_manager.get_mut(&existing_delta.1).unwrap();
 
-                ctx.record_submit(
-                    ctx.setup_command_buffer,
-                    ctx.setup_commands_reuse_fence,
-                    |ctx, command_buffer| unsafe {
-                        existing_texture.transition(
-                            &ctx.device,
-                            command_buffer,
-                            &TransitionDesc {
-                                new_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                                new_access_mask: vk::AccessFlags::TRANSFER_WRITE,
-                                new_stage_mask: vk::PipelineStageFlags::TRANSFER,
+                ctx.record_submit(|ctx, command_buffer| unsafe {
+                    existing_texture.transition(
+                        &ctx.device,
+                        command_buffer,
+                        &TransitionDesc {
+                            new_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                            new_access_mask: vk::AccessFlags::TRANSFER_WRITE,
+                            new_stage_mask: vk::PipelineStageFlags::TRANSFER,
+                        },
+                    );
+
+                    let texture = ctx.texture_manager.get_mut(&texture_handle).unwrap();
+                    texture.transition(
+                        &ctx.device,
+                        command_buffer,
+                        &TransitionDesc {
+                            new_layout: vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                            new_access_mask: vk::AccessFlags::TRANSFER_READ,
+                            new_stage_mask: vk::PipelineStageFlags::TRANSFER,
+                        },
+                    );
+
+                    let top_left = vk::Offset3D {
+                        x: pos[0] as i32,
+                        y: pos[1] as i32,
+                        z: 0,
+                    };
+                    let bottom_right = vk::Offset3D {
+                        x: pos[0] as i32 + delta.image.width() as i32,
+                        y: pos[1] as i32 + delta.image.height() as i32,
+                        z: 1,
+                    };
+
+                    ctx.device.cmd_blit_image(
+                        command_buffer,
+                        texture.image,
+                        vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                        existing_texture.image,
+                        vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                        &[vk::ImageBlit {
+                            src_subresource: vk::ImageSubresourceLayers {
+                                aspect_mask: vk::ImageAspectFlags::COLOR,
+                                mip_level: 0,
+                                base_array_layer: 0,
+                                layer_count: 1,
                             },
-                        );
-
-                        let texture = ctx.texture_manager.get_mut(&texture_handle).unwrap();
-                        texture.transition(
-                            &ctx.device,
-                            command_buffer,
-                            &TransitionDesc {
-                                new_layout: vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                                new_access_mask: vk::AccessFlags::TRANSFER_READ,
-                                new_stage_mask: vk::PipelineStageFlags::TRANSFER,
-                            },
-                        );
-
-                        let top_left = vk::Offset3D {
-                            x: pos[0] as i32,
-                            y: pos[1] as i32,
-                            z: 0,
-                        };
-                        let bottom_right = vk::Offset3D {
-                            x: pos[0] as i32 + delta.image.width() as i32,
-                            y: pos[1] as i32 + delta.image.height() as i32,
-                            z: 1,
-                        };
-
-                        ctx.device.cmd_blit_image(
-                            command_buffer,
-                            texture.image,
-                            vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                            existing_texture.image,
-                            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                            &[vk::ImageBlit {
-                                src_subresource: vk::ImageSubresourceLayers {
-                                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                                    mip_level: 0,
-                                    base_array_layer: 0,
-                                    layer_count: 1,
+                            src_offsets: [
+                                vk::Offset3D { x: 0, y: 0, z: 0 },
+                                vk::Offset3D {
+                                    x: texture.extent.width as i32,
+                                    y: texture.extent.height as i32,
+                                    z: texture.extent.depth as i32,
                                 },
-                                src_offsets: [
-                                    vk::Offset3D { x: 0, y: 0, z: 0 },
-                                    vk::Offset3D {
-                                        x: texture.extent.width as i32,
-                                        y: texture.extent.height as i32,
-                                        z: texture.extent.depth as i32,
-                                    },
-                                ],
-                                dst_subresource: vk::ImageSubresourceLayers {
-                                    aspect_mask: vk::ImageAspectFlags::COLOR,
-                                    mip_level: 0,
-                                    base_array_layer: 0,
-                                    layer_count: 1,
-                                },
-                                dst_offsets: [top_left, bottom_right],
-                            }],
-                            vk::Filter::NEAREST,
-                        );
-
-                        existing_texture.transition(
-                            &ctx.device,
-                            command_buffer,
-                            &TransitionDesc {
-                                new_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                                new_access_mask: vk::AccessFlags::SHADER_READ,
-                                new_stage_mask: vk::PipelineStageFlags::FRAGMENT_SHADER,
+                            ],
+                            dst_subresource: vk::ImageSubresourceLayers {
+                                aspect_mask: vk::ImageAspectFlags::COLOR,
+                                mip_level: 0,
+                                base_array_layer: 0,
+                                layer_count: 1,
                             },
-                        );
-                    },
-                );
+                            dst_offsets: [top_left, bottom_right],
+                        }],
+                        vk::Filter::NEAREST,
+                    );
+
+                    existing_texture.transition(
+                        &ctx.device,
+                        command_buffer,
+                        &TransitionDesc {
+                            new_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                            new_access_mask: vk::AccessFlags::SHADER_READ,
+                            new_stage_mask: vk::PipelineStageFlags::FRAGMENT_SHADER,
+                        },
+                    );
+                });
             } else {
                 let set = {
                     let pipeline = ctx.graphics_pipelines.get(&self.pipeline_handle).unwrap();
@@ -432,120 +428,110 @@ impl Renderer {
             }
         }
 
-        ctx.record_submit(
-            ctx.draw_command_buffer,
-            ctx.draw_commands_reuse_fence,
-            |ctx, command_buffer| unsafe {
-                let color_attachments = &[vk::RenderingAttachmentInfo::default()
-                    .image_view(
-                        *ctx.get_texture_view(if self.multisampled_handle.is_some() {
-                            self.multisampled_handle.as_ref().unwrap()
-                        } else {
-                            &self.attachment_handle
-                        })
-                        .unwrap(),
-                    )
-                    .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-                    .load_op(vk::AttachmentLoadOp::CLEAR)
-                    .store_op(vk::AttachmentStoreOp::STORE)
-                    .clear_value(vk::ClearValue {
-                        color: vk::ClearColorValue {
-                            float32: [0.0, 0.0, 0.0, 0.0],
-                        },
-                    })];
+        ctx.record_submit(|ctx, command_buffer| unsafe {
+            let color_attachments = &[vk::RenderingAttachmentInfo::default()
+                .image_view(
+                    *ctx.get_texture_view(if self.multisampled_handle.is_some() {
+                        self.multisampled_handle.as_ref().unwrap()
+                    } else {
+                        &self.attachment_handle
+                    })
+                    .unwrap(),
+                )
+                .image_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                .load_op(vk::AttachmentLoadOp::CLEAR)
+                .store_op(vk::AttachmentStoreOp::STORE)
+                .clear_value(vk::ClearValue {
+                    color: vk::ClearColorValue {
+                        float32: [0.0, 0.0, 0.0, 0.0],
+                    },
+                })];
 
-                ctx.begin_rendering(command_buffer, color_attachments, None);
+            ctx.begin_rendering(command_buffer, color_attachments, None);
 
-                let pipeline = ctx.graphics_pipelines.get(&self.pipeline_handle).unwrap();
-                pipeline.bind(&ctx.device, command_buffer);
-                let swapchain = ctx.get_swapchain();
-                ctx.device.cmd_push_constants(
+            let pipeline = ctx.graphics_pipelines.get(&self.pipeline_handle).unwrap();
+            pipeline.bind(&ctx.device, command_buffer);
+            let swapchain = ctx.get_swapchain();
+            ctx.device.cmd_push_constants(
+                command_buffer,
+                pipeline.layout,
+                vk::ShaderStageFlags::ALL_GRAPHICS,
+                0,
+                bytemuck::bytes_of(&PushConstants {
+                    screen_size: [
+                        swapchain.surface_resolution.width as f32,
+                        swapchain.surface_resolution.height as f32,
+                    ],
+                }),
+            );
+            drop(swapchain);
+
+            for (vertex_handle, index_handle, indices_len, texture_id) in draw_list.iter() {
+                // log::info!("using texture {:?}", texture_id);
+                ctx.device.cmd_bind_descriptor_sets(
                     command_buffer,
+                    vk::PipelineBindPoint::GRAPHICS,
                     pipeline.layout,
-                    vk::ShaderStageFlags::ALL_GRAPHICS,
                     0,
-                    bytemuck::bytes_of(&PushConstants {
-                        screen_size: [
-                            swapchain.surface_resolution.width as f32,
-                            swapchain.surface_resolution.height as f32,
-                        ],
-                    }),
+                    std::slice::from_ref(&self.textures.get(texture_id).unwrap().0),
+                    &[],
                 );
-                drop(swapchain);
 
-                for (vertex_handle, index_handle, indices_len, texture_id) in draw_list.iter() {
-                    // log::info!("using texture {:?}", texture_id);
-                    ctx.device.cmd_bind_descriptor_sets(
-                        command_buffer,
-                        vk::PipelineBindPoint::GRAPHICS,
-                        pipeline.layout,
-                        0,
-                        std::slice::from_ref(&self.textures.get(texture_id).unwrap().0),
-                        &[],
-                    );
+                ctx.device.cmd_bind_vertex_buffers(
+                    command_buffer,
+                    0,
+                    std::slice::from_ref(&ctx.buffer_manager.get(vertex_handle).unwrap().buffer),
+                    &[0],
+                );
+                ctx.device.cmd_bind_index_buffer(
+                    command_buffer,
+                    ctx.buffer_manager.get(index_handle).unwrap().buffer,
+                    0,
+                    vk::IndexType::UINT32,
+                );
+                ctx.device
+                    .cmd_draw_indexed(command_buffer, *indices_len, 1, 0, 0, 1);
+            }
 
-                    ctx.device.cmd_bind_vertex_buffers(
-                        command_buffer,
-                        0,
-                        std::slice::from_ref(
-                            &ctx.buffer_manager.get(&vertex_handle).unwrap().buffer,
-                        ),
-                        &[0],
-                    );
-                    ctx.device.cmd_bind_index_buffer(
-                        command_buffer,
-                        ctx.buffer_manager.get(&index_handle).unwrap().buffer,
-                        0,
-                        vk::IndexType::UINT32,
-                    );
-                    ctx.device
-                        .cmd_draw_indexed(command_buffer, *indices_len, 1, 0, 0, 1);
-                }
-
-                ctx.end_rendering(command_buffer);
-            },
-        );
+            ctx.end_rendering(command_buffer);
+        });
 
         if let Some(multisampled_handle) = self.multisampled_handle.as_ref() {
-            ctx.record_submit(
-                ctx.draw_command_buffer,
-                ctx.draw_commands_reuse_fence,
-                |ctx, command_buffer| unsafe {
-                    let src_image = ctx.texture_manager.get(&multisampled_handle).unwrap().image;
-                    let dst_image = ctx
-                        .texture_manager
-                        .get(&self.attachment_handle)
-                        .unwrap()
-                        .image;
+            ctx.record_submit(|ctx, command_buffer| unsafe {
+                let src_image = ctx.texture_manager.get(multisampled_handle).unwrap().image;
+                let dst_image = ctx
+                    .texture_manager
+                    .get(&self.attachment_handle)
+                    .unwrap()
+                    .image;
 
-                    let swapchain = ctx.get_swapchain();
-                    ctx.device.cmd_resolve_image(
-                        command_buffer,
-                        src_image,
-                        vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                        dst_image,
-                        vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                        &[vk::ImageResolve::default()
-                            .src_subresource(vk::ImageSubresourceLayers {
-                                aspect_mask: vk::ImageAspectFlags::COLOR,
-                                mip_level: 0,
-                                base_array_layer: 0,
-                                layer_count: 1,
-                            })
-                            .dst_subresource(vk::ImageSubresourceLayers {
-                                aspect_mask: vk::ImageAspectFlags::COLOR,
-                                mip_level: 0,
-                                base_array_layer: 0,
-                                layer_count: 1,
-                            })
-                            .extent(vk::Extent3D {
-                                width: swapchain.surface_resolution.width,
-                                height: swapchain.surface_resolution.height,
-                                depth: 1,
-                            })],
-                    );
-                },
-            );
+                let swapchain = ctx.get_swapchain();
+                ctx.device.cmd_resolve_image(
+                    command_buffer,
+                    src_image,
+                    vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                    dst_image,
+                    vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    &[vk::ImageResolve::default()
+                        .src_subresource(vk::ImageSubresourceLayers {
+                            aspect_mask: vk::ImageAspectFlags::COLOR,
+                            mip_level: 0,
+                            base_array_layer: 0,
+                            layer_count: 1,
+                        })
+                        .dst_subresource(vk::ImageSubresourceLayers {
+                            aspect_mask: vk::ImageAspectFlags::COLOR,
+                            mip_level: 0,
+                            base_array_layer: 0,
+                            layer_count: 1,
+                        })
+                        .extent(vk::Extent3D {
+                            width: swapchain.surface_resolution.width,
+                            height: swapchain.surface_resolution.height,
+                            depth: 1,
+                        })],
+                );
+            });
         }
     }
 }

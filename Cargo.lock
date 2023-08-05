@@ -342,13 +342,14 @@ dependencies = [
 [[package]]
 name = "beuk"
 version = "0.1.0"
-source = "git+https://github.com/dylanblokhuis/beuk?rev=c561454f78302e8ed2cf52c121498e469a39bba2#c561454f78302e8ed2cf52c121498e469a39bba2"
+source = "git+https://github.com/dylanblokhuis/beuk?rev=91655330cc3d5a24df8b99105a2c29364f351b8e#91655330cc3d5a24df8b99105a2c29364f351b8e"
 dependencies = [
  "anyhow",
  "arrayvec",
  "ash",
  "ash-window",
  "boxcar",
+ "crossbeam-channel",
  "crossbeam-queue",
  "gpu-allocator",
  "log",

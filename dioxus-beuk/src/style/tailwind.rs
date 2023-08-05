@@ -55,8 +55,6 @@ impl State for Tailwind {
         let mut taffy = taffy.lock().unwrap();
         let mut changed = false;
 
-        println!("{:?}", self);
-
         if let Some(text) = node_view.text() {
             // we just need the size of this shape for the layout
             // hence no colors being used
@@ -278,15 +276,6 @@ impl Tailwind {
             "auto" => Dimension::AUTO,
             class => {
                 if class.ends_with('%') {
-                    println!(
-                        "{:?}",
-                        class
-                            .strip_suffix('%')
-                            .unwrap()
-                            .parse::<f32>()
-                            .unwrap_or(0.0)
-                    );
-
                     Dimension::Percent(
                         class
                             .strip_suffix('%')

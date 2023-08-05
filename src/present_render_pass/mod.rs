@@ -132,8 +132,8 @@ impl PresentRenderPass {
     pub fn combine_and_draw(
         &mut self,
         ctx: &RenderContext,
-        ui_attachment: ResourceHandle<Texture>,
-        media_attachment: ResourceHandle<Texture>,
+        ui_attachment: &ResourceHandle<Texture>,
+        media_attachment: &ResourceHandle<Texture>,
         present_index: u32,
     ) {
         let pipeline = ctx.graphics_pipelines.get(&self.pipeline_handle).unwrap();
