@@ -11,7 +11,6 @@ use tao::event_loop::ControlFlow;
 use tao::{event::WindowEvent, event_loop::EventLoop, window::WindowBuilder};
 
 use std::sync::{Arc, RwLock};
-use std::time::Instant;
 
 mod decoder;
 mod media_render_pass;

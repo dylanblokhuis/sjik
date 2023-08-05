@@ -2,12 +2,15 @@ use beuk::ctx::RenderContext;
 
 use beuk::memory::ResourceHandle;
 use beuk::texture::Texture;
-use dioxus::prelude::{Element, Scope, VirtualDom};
+use dioxus::prelude::{Element, Scope, ScopeId, VirtualDom};
 use epaint::text::FontDefinitions;
 use epaint::{Fonts, TextureManager};
 use rustc_hash::FxHashSet;
+use std::cell::RefCell;
 use std::ops::Deref;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockWriteGuard};
+use taffy::style::Position;
 use tao::{dpi::PhysicalSize, event_loop::EventLoopProxy};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 
@@ -141,13 +144,17 @@ async fn spawn_dom(
     mut redraw_receiver: UnboundedReceiver<()>,
     vdom_dirty: Arc<FxDashSet<NodeId>>,
 ) -> Option<()> {
-    let mut renderer = DioxusRenderer::new(app, &rdom);
+    let dom_context = Rc::new(DomContext {
+        window_size: RefCell::new(*size.lock().unwrap()),
+    });
+    let mut renderer = DioxusRenderer::new(app, &rdom, dom_context);
     let mut last_size;
 
     // initial render
     {
         let mut rdom = rdom.write().ok()?;
         let root_id = rdom.root_id();
+
         renderer.update(rdom.get_mut(root_id)?);
         let mut ctx = SendAnyMap::new();
         ctx.insert(taffy.clone());
@@ -172,10 +179,12 @@ async fn spawn_dom(
         let root_taffy_node = root_node.get::<Tailwind>().unwrap().node.unwrap();
 
         let mut style = locked_taffy.style(root_taffy_node).unwrap().clone();
+
         style.size = Size {
             width: Dimension::Length(width),
             height: Dimension::Length(height),
         };
+
         locked_taffy.set_style(root_taffy_node, style).unwrap();
         locked_taffy.compute_layout(root_taffy_node, size).unwrap();
         for k in to_rerender.into_iter() {
@@ -191,6 +200,14 @@ async fn spawn_dom(
             _ = redraw_receiver.recv() => {},
             Some(event) = event_receiver.recv() => {
                 let DomEvent { name, data, element, bubbles } = event;
+
+                let app_ctx = renderer
+                    .vdom
+                    .base_scope()
+                    .consume_context::<Rc<DomContext>>()
+                    .unwrap();
+                *app_ctx.window_size.borrow_mut() = *size.lock().unwrap();
+
                 let mut rdom = rdom.write().ok()?;
                 renderer.handle_event(rdom.get_mut(element)?, name, data, bubbles);
             }
@@ -199,6 +216,14 @@ async fn spawn_dom(
         let mut rdom = rdom.write().ok()?;
         // render after the event has been handled
         let root_id = rdom.root_id();
+
+        let app_ctx = renderer
+            .vdom
+            .base_scope()
+            .consume_context::<Rc<DomContext>>()
+            .unwrap();
+        *app_ctx.window_size.borrow_mut() = *size.lock().unwrap();
+
         renderer.update(rdom.get_mut(root_id)?);
 
         let mut ctx = SendAnyMap::new();
@@ -217,6 +242,7 @@ async fn spawn_dom(
             height: AvailableSpace::Definite(height),
         };
         if !to_rerender.is_empty() || last_size != size {
+            renderer.vdom.mark_dirty(ScopeId(0));
             last_size = size;
             let mut taffy = taffy.lock().unwrap();
             let root_node = rdom.get(rdom.root_id()).unwrap();
@@ -378,9 +404,18 @@ struct DioxusRenderer {
     hot_reload_rx: tokio::sync::mpsc::UnboundedReceiver<dioxus_hot_reload::HotReloadMsg>,
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct DomContext {
+    pub window_size: RefCell<PhysicalSize<u32>>,
+}
+
 impl DioxusRenderer {
-    pub fn new(app: fn(Scope) -> Element, rdom: &Arc<RwLock<RealDom>>) -> Self {
-        let mut vdom = VirtualDom::new(app);
+    pub fn new(
+        app: fn(Scope) -> Element,
+        rdom: &Arc<RwLock<RealDom>>,
+        ctx: Rc<DomContext>,
+    ) -> Self {
+        let mut vdom = VirtualDom::new(app).with_root_context(ctx);
         let muts = vdom.rebuild();
         let mut rdom = rdom.write().unwrap();
         let mut dioxus_state = DioxusState::create(&mut rdom);
@@ -403,6 +438,7 @@ impl DioxusRenderer {
 
     fn update(&mut self, mut root: NodeMut<()>) {
         let rdom = root.real_dom_mut();
+
         let muts = self.vdom.render_immediate();
         self.dioxus_state.apply_mutations(rdom, muts);
     }

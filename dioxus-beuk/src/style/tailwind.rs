@@ -5,6 +5,7 @@ use dioxus_native_core_macro::partial_derive_state;
 
 use epaint::emath::Align;
 use epaint::{Color32, FontId, Rounding};
+use log::debug;
 use shipyard::Component;
 use taffy::prelude::*;
 use taffy::style::Style;
@@ -197,14 +198,23 @@ impl State for Tailwind {
             }
 
             if let Some(class) = class.strip_prefix("items-") {
-                style.align_items = Some(match class {
-                    "start" => AlignItems::FlexStart,
-                    "end" => AlignItems::FlexEnd,
-                    "center" => AlignItems::Center,
-                    "baseline" => AlignItems::Baseline,
-                    "stretch" => AlignItems::Stretch,
-                    _ => panic!("Unknown align items {class}"),
-                })
+                match class {
+                    "start" => style.align_items = Some(AlignItems::FlexStart),
+                    "end" => style.align_items = Some(AlignItems::FlexEnd),
+                    "center" => style.align_items = Some(AlignItems::Center),
+                    "baseline" => style.align_items = Some(AlignItems::Baseline),
+                    "stretch" => style.align_items = Some(AlignItems::Stretch),
+                    _ => debug!("Unknown align items {class}"),
+                }
+            }
+
+            if let Some(class) = class.strip_prefix("flex-") {
+                match class {
+                    "wrap" => style.flex_wrap = FlexWrap::Wrap,
+                    "wrap-reverse" => style.flex_wrap = FlexWrap::WrapReverse,
+                    "nowrap" => style.flex_wrap = FlexWrap::NoWrap,
+                    _ => debug!("Unknown flex wrap {class}"),
+                }
             }
         }
 
@@ -291,33 +301,45 @@ impl Tailwind {
     }
 
     fn handle_color(class: &str, colors: &Colors) -> Option<Color32> {
-        // check check color then variant
-        let color_and_variant: Vec<&str> = class.split('-').collect();
-        if color_and_variant.len() != 2 {
+        // Split the class into components
+        let components: Vec<&str> = class.split('/').collect();
+        let color_and_variant: Vec<&str> = components[0].split('-').collect();
+
+        // If there's an alpha channel specified, get it
+        let alpha = if components.len() > 1 {
+            match components[1].parse::<u16>() {
+                // convert from 100 to 255k
+                Ok(a) => (a * 255 / 100) as u8,
+                Err(_) => return None, // Invalid alpha
+            }
+        } else {
+            255 // Default alpha
+        };
+
+        println!("{:?}", alpha);
+
+        // Handle special colors
+        if color_and_variant.len() == 1 {
             return match color_and_variant[0] {
                 "transparent" => Some(Color32::from_rgba_unmultiplied(0, 0, 0, 0)),
-                "white" => Some(Color32::from_rgba_unmultiplied(255, 255, 255, 255)),
-                "black" => Some(Color32::from_rgba_unmultiplied(0, 0, 0, 255)),
+                "white" => Some(Color32::from_rgba_unmultiplied(255, 255, 255, alpha)),
+                "black" => Some(Color32::from_rgba_unmultiplied(0, 0, 0, alpha)),
                 _ => colors.get(color_and_variant[0]).map(|c| {
                     let (_, variant) = c.iter().next().unwrap();
-                    Color32::from_rgba_unmultiplied(variant[0], variant[1], variant[2], variant[3])
+                    Color32::from_rgba_unmultiplied(variant[0], variant[1], variant[2], alpha)
                 }),
             };
         }
+
+        // Handle regular colors
         let color = color_and_variant[0];
         let variant = color_and_variant[1];
 
-        let Some(variants) = colors.get(color) else {
-            return None;
-        };
-
-        let Some(variant_color) = variants.get(variant) else {
-            return None;
-        };
-
-        let [r, g, b, a] = variant_color;
-
-        Some(Color32::from_rgba_unmultiplied(*r, *g, *b, *a))
+        colors.get(color).and_then(|variants| {
+            variants
+                .get(variant)
+                .map(|&[r, g, b, _]| Color32::from_rgba_unmultiplied(r, g, b, alpha))
+        })
     }
 }
 

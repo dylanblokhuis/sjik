@@ -3,7 +3,9 @@ use beuk::{
     buffer::{Buffer, BufferDescriptor, MemoryLocation},
     ctx::{RenderContext, SamplerDesc},
     memory::ResourceHandle,
-    pipeline::{GraphicsPipeline, GraphicsPipelineDescriptor, PrimitiveState},
+    pipeline::{
+        BlendState, GraphicsPipeline, GraphicsPipelineDescriptor, MultisampleState, PrimitiveState,
+    },
     texture::Texture,
 };
 
@@ -71,7 +73,7 @@ impl PresentRenderPass {
             },
             depth_stencil: Default::default(),
             push_constant_range: None,
-            blend: Default::default(),
+            blend: vec![BlendState::ALPHA_BLENDING],
             multisample: Default::default(),
         });
 

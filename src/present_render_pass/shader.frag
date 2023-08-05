@@ -10,9 +10,7 @@ layout (location = 0) out vec4 a_frag_color;
 
 void main() {
     vec4 ui_data = texture(ui_texture, o_uv);
-    if (ui_data.a == 0.0) {
-        a_frag_color = texture(media_texture, o_uv);
-    } else {
-        a_frag_color = ui_data;
-    }
+    vec4 media_data = texture(media_texture, o_uv);
+    
+    a_frag_color = mix(media_data, ui_data, ui_data.a);
 }
