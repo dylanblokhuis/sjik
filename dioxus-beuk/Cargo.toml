@@ -26,6 +26,8 @@ epaint = { git = "https://github.com/emilk/egui", features = ["bytemuck", "defau
 dioxus-hot-reload = { git = "https://github.com/DioxusLabs/dioxus/", features = ["file_watcher"], optional = true }
 tracing = "0.1"
 log = "0.4"
+usvg = "0.35.0"
+resvg = "0.35.0"
 
 [features]
 hot-reload = ["dioxus-hot-reload"]

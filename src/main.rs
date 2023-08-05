@@ -51,7 +51,7 @@ fn main() {
     let ctx = Arc::new(beuk::ctx::RenderContext::new(RenderContextDescriptor {
         display_handle: window.raw_display_handle(),
         window_handle: window.raw_window_handle(),
-        present_mode: PresentModeKHR::FIFO_RELAXED,
+        present_mode: PresentModeKHR::default(),
     }));
 
     let current_video: Arc<RwLock<Option<CurrentVideo>>> = Arc::new(RwLock::new(None));
@@ -61,12 +61,12 @@ fn main() {
         let current_video = current_video.clone();
 
         move || {
-            let mut media_decoder = MediaDecoder::new("http://192.168.178.49:32400/library/parts/1720/1689874581/file.mkv?download=1&X-Plex-Token=J3j74Py7w49SsXrq3ThS", move|frame| {
+            let mut media_decoder = MediaDecoder::new("http://192.168.178.49:32400/library/parts/1720/1689874581/file.mkv?download=1&X-Plex-Token=J3j74Py7w49SsXrq3ThS", move |frame| {
                 decoder_tx.send(frame).unwrap();
             });
             let (width, height) = media_decoder.get_video_size();
-            *current_video.write().unwrap() = Some(CurrentVideo { width, height });
-            media_decoder.start();
+            // *current_video.write().unwrap() = Some(CurrentVideo { width, height });
+            // media_decoder.start();
         }
     });
 
@@ -81,7 +81,6 @@ fn main() {
     ctx.command_thread_pool.spawn({
         let ctx = ctx.clone();
         move || {
-            println!("media thread {:?}", std::thread::current().id());
             while let Ok(event) = decoder_rx.recv() {
                 if let Some(current_video) = current_video.read().unwrap().as_ref() {
                     media_node.setup_buffers(&ctx, current_video);

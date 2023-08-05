@@ -216,6 +216,24 @@ impl State for Tailwind {
                     _ => debug!("Unknown flex wrap {class}"),
                 }
             }
+
+            if let Some(class) = class.strip_prefix("gap-") {
+                let gap = LengthPercentage::Length(class.parse::<f32>().unwrap_or(0.0));
+                style.gap = Size {
+                    width: gap,
+                    height: gap,
+                };
+            }
+
+            if let Some(class) = class.strip_prefix("gap-x-") {
+                let gap = LengthPercentage::Length(class.parse::<f32>().unwrap_or(0.0));
+                style.gap.width = gap;
+            }
+
+            if let Some(class) = class.strip_prefix("gap-y-") {
+                let gap = LengthPercentage::Length(class.parse::<f32>().unwrap_or(0.0));
+                style.gap.height = gap;
+            }
         }
 
         let mut child_layout = vec![];
@@ -315,8 +333,6 @@ impl Tailwind {
         } else {
             255 // Default alpha
         };
-
-        println!("{:?}", alpha);
 
         // Handle special colors
         if color_and_variant.len() == 1 {

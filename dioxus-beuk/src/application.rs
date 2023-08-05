@@ -147,7 +147,7 @@ async fn spawn_dom(
     let dom_context = Rc::new(DomContext {
         window_size: RefCell::new(*size.lock().unwrap()),
     });
-    let mut renderer = DioxusRenderer::new(app, &rdom, dom_context);
+    let mut renderer = DioxusRenderer::new(app, &rdom, dom_context, proxy.clone());
     let mut last_size;
 
     // initial render
@@ -400,6 +400,7 @@ impl DirtyNodes {
 struct DioxusRenderer {
     vdom: VirtualDom,
     dioxus_state: DioxusState,
+    proxy: EventLoopProxy<Redraw>,
     #[cfg(feature = "hot-reload")]
     hot_reload_rx: tokio::sync::mpsc::UnboundedReceiver<dioxus_hot_reload::HotReloadMsg>,
 }
@@ -414,6 +415,7 @@ impl DioxusRenderer {
         app: fn(Scope) -> Element,
         rdom: &Arc<RwLock<RealDom>>,
         ctx: Rc<DomContext>,
+        proxy: EventLoopProxy<Redraw>,
     ) -> Self {
         let mut vdom = VirtualDom::new(app).with_root_context(ctx);
         let muts = vdom.rebuild();
@@ -423,7 +425,7 @@ impl DioxusRenderer {
         DioxusRenderer {
             vdom,
             dioxus_state,
-
+            proxy,
             #[cfg(feature = "hot-reload")]
             hot_reload_rx: {
                 let (hot_reload_tx, hot_reload_rx) =
@@ -473,6 +475,7 @@ impl DioxusRenderer {
                 match msg {
                     dioxus_hot_reload::HotReloadMsg::UpdateTemplate(template) => {
                         self.vdom.replace_template(template);
+                        self.proxy.send_event(Redraw).unwrap();
                     }
                     dioxus_hot_reload::HotReloadMsg::Shutdown => {
                         std::process::exit(0);

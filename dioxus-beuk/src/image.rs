@@ -6,6 +6,7 @@ use dioxus_native_core_macro::partial_derive_state;
 
 use epaint::ColorImage;
 use shipyard::Component;
+use usvg::TreeParsing;
 
 use crate::application::RendererState;
 
@@ -59,25 +60,53 @@ impl State for ImageExtractor {
         path.push("assets");
         path.push(src_attr.value.to_string());
 
-        let Ok(reader) = ImageReader::open(path.clone()) else {
-            log::error!("Failed to open image: {}", path.display());
-            return false;
-        };
-        let Ok(img) = reader.decode() else {
-            log::error!("Failed to decode image: {}", path.display());
-            return false;
-        };
-        let size = [img.width() as usize, img.height() as usize];
-        let rgba = img.to_rgba8();
+        let extension = path.extension().unwrap().to_str().unwrap();
 
-        let mut manager = state.tex_manager.write().unwrap();
-        let id = manager.alloc(
-            src_attr.value.to_string(),
-            epaint::ImageData::Color(ColorImage::from_rgba_unmultiplied(size, &rgba)),
-            TextureOptions::LINEAR,
-        );
-        self.texture_id = id;
-        self.path = src_attr.value.to_string();
+        if extension.contains("svg") {
+            let opt = usvg::Options::default();
+            let svg_bytes = std::fs::read(path.clone()).unwrap();
+            let rtree = usvg::Tree::from_data(&svg_bytes, &opt)
+                .map_err(|err| err.to_string())
+                .expect("Failed to parse SVG file");
+
+            let rtree = resvg::Tree::from_usvg(&rtree);
+            let pixmap_size = rtree.size.to_int_size();
+            let mut pixmap =
+                resvg::tiny_skia::Pixmap::new(pixmap_size.width(), pixmap_size.height()).unwrap();
+            rtree.render(resvg::tiny_skia::Transform::default(), &mut pixmap.as_mut());
+
+            let mut manager = state.tex_manager.write().unwrap();
+            let id = manager.alloc(
+                src_attr.value.to_string(),
+                epaint::ImageData::Color(ColorImage::from_rgba_unmultiplied(
+                    [pixmap_size.width() as usize, pixmap_size.height() as usize],
+                    pixmap.data(),
+                )),
+                TextureOptions::LINEAR,
+            );
+            self.texture_id = id;
+            self.path = src_attr.value.to_string();
+        } else {
+            let Ok(reader) = ImageReader::open(path.clone()) else {
+                log::error!("Failed to open image: {}", path.display());
+                return false;
+            };
+            let Ok(img) = reader.decode() else {
+                log::error!("Failed to decode image: {}", path.display());
+                return false;
+            };
+            let size = [img.width() as usize, img.height() as usize];
+            let rgba = img.to_rgba8();
+
+            let mut manager = state.tex_manager.write().unwrap();
+            let id = manager.alloc(
+                src_attr.value.to_string(),
+                epaint::ImageData::Color(ColorImage::from_rgba_unmultiplied(size, &rgba)),
+                TextureOptions::LINEAR,
+            );
+            self.texture_id = id;
+            self.path = src_attr.value.to_string();
+        }
 
         true
     }
