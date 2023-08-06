@@ -62,9 +62,12 @@ impl State for Tailwind {
             let shape = epaint::Shape::text(
                 &state.fonts.read().unwrap(),
                 epaint::Pos2 { x: 0.0, y: 0.0 },
-                epaint::emath::Align2([Align::TOP, Align::LEFT]),
+                epaint::emath::Align2::LEFT_TOP,
                 text,
-                FontId::default(),
+                FontId {
+                    family: epaint::FontFamily::Monospace,
+                    size: 18.0,
+                },
                 epaint::Color32::WHITE,
             );
             let rect = shape.visual_bounding_rect();
@@ -73,8 +76,8 @@ impl State for Tailwind {
 
             let style = Style {
                 size: Size {
-                    width: Dimension::Length(width),
-                    height: Dimension::Length(height),
+                    width: Dimension::Length(width + 3.0),
+                    height: Dimension::Length(height + 3.0),
                 },
                 ..Default::default()
             };
@@ -165,6 +168,16 @@ impl State for Tailwind {
                 let padding = LengthPercentage::Length(class.parse::<f32>().unwrap_or(0.0));
                 style.padding.left = padding;
                 style.padding.right = padding;
+            }
+
+            if let Some(class) = class.strip_prefix("pt-") {
+                let padding = LengthPercentage::Length(class.parse::<f32>().unwrap_or(0.0));
+                style.padding.top = padding;
+            }
+
+            if let Some(class) = class.strip_prefix("pb-") {
+                let padding = LengthPercentage::Length(class.parse::<f32>().unwrap_or(0.0));
+                style.padding.bottom = padding;
             }
 
             if let Some(class) = class.strip_prefix("rounded-") {

@@ -38,9 +38,12 @@ fn render_node(taffy: &Taffy, node: NodeRef, renderer: &mut Renderer, location: 
                     x: location.x,
                     y: location.y,
                 },
-                epaint::emath::Align2([Align::TOP, Align::LEFT]),
+                epaint::emath::Align2::LEFT_TOP,
                 text,
-                FontId::default(),
+                FontId {
+                    family: epaint::FontFamily::Monospace,
+                    size: 18.0,
+                },
                 tailwind.color,
             );
             let clip = shape.visual_bounding_rect();

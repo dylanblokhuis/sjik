@@ -16,13 +16,19 @@ fn find_node_on_point_recursive(
     dom: &RealDom,
     mouse_pos: epaint::Pos2,
     node: taffy::tree::NodeId,
+    parent_offset: epaint::Pos2, // added parent_offset argument
 ) -> Option<NodeId> {
     let layout = taffy.layout(node).unwrap();
 
-    if mouse_pos.x >= layout.location.x
-        && mouse_pos.x <= layout.location.x + layout.size.width
-        && mouse_pos.y >= layout.location.y
-        && mouse_pos.y <= layout.location.y + layout.size.height
+    let absolute_location = epaint::Pos2 {
+        x: layout.location.x + parent_offset.x,
+        y: layout.location.y + parent_offset.y,
+    };
+
+    if mouse_pos.x >= absolute_location.x
+        && mouse_pos.x <= absolute_location.x + layout.size.width
+        && mouse_pos.y >= absolute_location.y
+        && mouse_pos.y <= absolute_location.y + layout.size.height
     {
         let entity_id = find_dom_element_recursive(dom.get(dom.root_id()).unwrap(), node).unwrap();
         let entity = dom.get(entity_id).unwrap();
@@ -32,19 +38,19 @@ fn find_node_on_point_recursive(
             .is_some();
 
         if is_mouse_effected {
-            // && check_hovered(taffy, entity, mouse_pos) {
             return Some(entity.id());
         }
 
         let children = taffy.children(node).unwrap();
         for child in children {
-            if let Some(found) = find_node_on_point_recursive(taffy, dom, mouse_pos, child) {
+            if let Some(found) =
+                find_node_on_point_recursive(taffy, dom, mouse_pos, child, absolute_location)
+            {
                 return Some(found);
             }
         }
     }
 
-    // point is not inside the current node
     None
 }
 
@@ -72,7 +78,13 @@ pub(crate) fn get_hovered(taffy: &Taffy, dom: &RealDom, mouse_pos: epaint::Pos2)
     let root_node = dom.get(dom.root_id()).unwrap();
     let tailwind = root_node.get::<Tailwind>().unwrap();
 
-    find_node_on_point_recursive(taffy, dom, mouse_pos, tailwind.node.unwrap())
+    find_node_on_point_recursive(
+        taffy,
+        dom,
+        mouse_pos,
+        tailwind.node.unwrap(),
+        epaint::Pos2::ZERO,
+    )
 }
 
 pub(crate) fn check_hovered(taffy: &Taffy, node: NodeRef, mouse_pos: epaint::Pos2) -> bool {

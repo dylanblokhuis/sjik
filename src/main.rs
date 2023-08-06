@@ -51,7 +51,7 @@ fn main() {
     let ctx = Arc::new(beuk::ctx::RenderContext::new(RenderContextDescriptor {
         display_handle: window.raw_display_handle(),
         window_handle: window.raw_window_handle(),
-        present_mode: PresentModeKHR::default(),
+        present_mode: PresentModeKHR::FIFO,
     }));
 
     let current_video: Arc<RwLock<Option<CurrentVideo>>> = Arc::new(RwLock::new(None));
@@ -106,7 +106,8 @@ fn main() {
                     } => {
                         application.set_size(physical_size);
                     }
-                    tao::event::Event::UserEvent(_) => {
+
+                    Event::RedrawRequested(_) => {
                         if !application.clean().is_empty() {
                             application.render(&ctx);
                         }
@@ -140,7 +141,9 @@ fn main() {
                 );
                 ctx.present_submit(present_index);
             }
-
+            tao::event::Event::UserEvent(_) => {
+                window.request_redraw();
+            }
             _ => (),
         }
     });
