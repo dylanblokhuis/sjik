@@ -10,8 +10,8 @@ mod events;
 mod focus;
 mod image;
 mod mouse;
+mod paint;
 mod prevent_default;
-mod render;
 mod renderer;
 mod style;
 

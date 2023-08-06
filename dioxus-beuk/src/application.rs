@@ -10,22 +10,20 @@ use std::cell::RefCell;
 use std::ops::Deref;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockWriteGuard};
-use taffy::style::Position;
 use tao::{dpi::PhysicalSize, event_loop::EventLoopProxy};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 
 use crate::image::ImageExtractor;
 use crate::renderer::Renderer;
 use crate::style::Tailwind;
-use crate::EventData;
 use crate::{
     events::{BlitzEventHandler, DomEvent},
     focus::{Focus, FocusState},
     mouse::MouseEffected,
     prevent_default::PreventDefault,
-    render::render,
     Redraw, TaoEvent,
 };
+use crate::{paint, EventData};
 use dioxus_native_core::{prelude::*, FxDashSet};
 use taffy::{
     prelude::{AvailableSpace, Size},
@@ -100,7 +98,7 @@ impl DioxusApp {
     pub fn render(&mut self, render_context: &RenderContext) {
         self.renderer.shapes.clear();
 
-        self.dom.render(&mut self.renderer);
+        self.dom.paint(&mut self.renderer);
         self.renderer.render(render_context);
     }
 
@@ -111,21 +109,17 @@ impl DioxusApp {
         }
     }
 
+    #[tracing::instrument(name = "DioxusApp::clean", skip_all)]
     pub fn clean(&mut self) -> DirtyNodes {
         self.event_handler.clean().or(self.dom.clean())
     }
 
     pub fn send_event(&mut self, event: &TaoEvent) {
-        let size = self.dom.size();
-        let size = Size {
-            width: size.width,
-            height: size.height,
-        };
         let evts;
         {
             let rdom = &mut self.dom.rdom();
             let taffy = &self.dom.taffy();
-            self.event_handler.register_event(event, rdom, taffy, &size);
+            self.event_handler.register_event(event, rdom, taffy);
             evts = self.event_handler.drain_events();
         }
         self.dom.send_events(evts);
@@ -242,7 +236,9 @@ async fn spawn_dom(
             height: AvailableSpace::Definite(height),
         };
         if !to_rerender.is_empty() || last_size != size {
-            renderer.vdom.mark_dirty(ScopeId(0));
+            if last_size != size {
+                renderer.vdom.mark_dirty(ScopeId(0));
+            }
             last_size = size;
             let mut taffy = taffy.lock().unwrap();
             let root_node = rdom.get(rdom.root_id()).unwrap();
@@ -360,8 +356,8 @@ impl DomManager {
     }
 
     #[tracing::instrument(name = "DomManager::render", skip_all)]
-    fn render(&self, renderer: &mut Renderer) {
-        render(&self.rdom(), &self.taffy(), renderer);
+    fn paint(&self, renderer: &mut Renderer) {
+        paint::render(&self.rdom(), &self.taffy(), renderer);
     }
 
     fn send_events(&self, events: impl IntoIterator<Item = DomEvent>) {

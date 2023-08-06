@@ -6,7 +6,7 @@ use shipyard::Component;
 use taffy::Taffy;
 
 use crate::{
-    render::{get_abs_pos, get_shape},
+    paint::{get_abs_pos, get_shape},
     style::Tailwind,
 };
 
@@ -74,6 +74,7 @@ fn find_dom_element_recursive(node: NodeRef, taffy_node: taffy::tree::NodeId) ->
     None
 }
 
+#[tracing::instrument(skip_all, name = "mouse::get_hovered")]
 pub(crate) fn get_hovered(taffy: &Taffy, dom: &RealDom, mouse_pos: epaint::Pos2) -> Option<NodeId> {
     let root_node = dom.get(dom.root_id()).unwrap();
     let tailwind = root_node.get::<Tailwind>().unwrap();

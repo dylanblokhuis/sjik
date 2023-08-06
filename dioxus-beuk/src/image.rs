@@ -28,6 +28,7 @@ impl State for ImageExtractor {
     const NODE_MASK: NodeMaskBuilder<'static> =
         NodeMaskBuilder::new().with_attrs(AttributeMaskBuilder::Some(&["src"]));
 
+    #[tracing::instrument(skip_all, name = "image::update")]
     fn update<'a>(
         &mut self,
         node_view: NodeView,

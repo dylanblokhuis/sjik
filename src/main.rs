@@ -51,7 +51,7 @@ fn main() {
     let ctx = Arc::new(beuk::ctx::RenderContext::new(RenderContextDescriptor {
         display_handle: window.raw_display_handle(),
         window_handle: window.raw_window_handle(),
-        present_mode: PresentModeKHR::FIFO,
+        present_mode: PresentModeKHR::FIFO_RELAXED,
     }));
 
     let current_video: Arc<RwLock<Option<CurrentVideo>>> = Arc::new(RwLock::new(None));
@@ -65,8 +65,8 @@ fn main() {
                 decoder_tx.send(frame).unwrap();
             });
             let (width, height) = media_decoder.get_video_size();
-            // *current_video.write().unwrap() = Some(CurrentVideo { width, height });
-            // media_decoder.start();
+            *current_video.write().unwrap() = Some(CurrentVideo { width, height });
+            media_decoder.start();
         }
     });
 
@@ -95,6 +95,7 @@ fn main() {
     ctx.command_thread_pool.spawn({
         let ctx = ctx.clone();
         move || {
+            application.render(&ctx);
             while let Ok(event) = event_rx.recv() {
                 application.send_event(&event);
 
@@ -107,11 +108,10 @@ fn main() {
                         application.set_size(physical_size);
                     }
 
-                    Event::RedrawRequested(_) => {
-                        if !application.clean().is_empty() {
-                            application.render(&ctx);
-                        }
+                    tao::event::Event::RedrawRequested(_) => {
+                        application.render(&ctx);
                     }
+
                     _ => (),
                 }
             }

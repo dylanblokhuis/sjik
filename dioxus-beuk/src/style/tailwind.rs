@@ -43,6 +43,7 @@ impl State for Tailwind {
         .with_attrs(AttributeMaskBuilder::Some(&["class"]))
         .with_text();
 
+    #[tracing::instrument(skip_all, name = "tailwind::update")]
     fn update<'a>(
         &mut self,
         node_view: NodeView,

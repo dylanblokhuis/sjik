@@ -132,13 +132,7 @@ impl BlitzEventHandler {
         self.state.clean()
     }
 
-    pub(crate) fn register_event(
-        &mut self,
-        event: &TaoEvent,
-        rdom: &mut RealDom,
-        taffy: &Taffy,
-        viewport_size: &Size<u32>,
-    ) {
+    pub(crate) fn register_event(&mut self, event: &TaoEvent, rdom: &mut RealDom, taffy: &Taffy) {
         match event {
             tao::event::Event::NewEvents(_) => (),
             tao::event::Event::WindowEvent {

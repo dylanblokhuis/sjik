@@ -176,6 +176,7 @@ impl Renderer {
         }
     }
 
+    #[tracing::instrument(name = "Renderer::update_textures", skip_all)]
     pub fn update_textures(&mut self, ctx: &RenderContext) {
         let texture_delta = {
             let font_image_delta = self.state.fonts.read().unwrap().font_image_delta();
@@ -382,13 +383,16 @@ impl Renderer {
             (atlas.size(), atlas.prepared_discs())
         };
 
-        let primitives = epaint::tessellator::tessellate_shapes(
-            self.state.fonts.read().unwrap().pixels_per_point(),
-            TessellationOptions::default(),
-            font_tex_size,
-            prepared_discs,
-            self.shapes.clone(),
-        );
+        let primitives = {
+            let _guard = tracing::trace_span!("tessellate_shapes").entered();
+            epaint::tessellator::tessellate_shapes(
+                self.state.fonts.read().unwrap().pixels_per_point(),
+                TessellationOptions::default(),
+                font_tex_size,
+                prepared_discs,
+                self.shapes.clone(),
+            )
+        };
 
         self.update_textures(ctx);
 
@@ -399,7 +403,7 @@ impl Renderer {
                     let vertex_buffer = ctx.create_buffer_with_data(
                         &BufferDescriptor {
                             debug_name: "vertices",
-                            location: MemoryLocation::GpuOnly,
+                            location: MemoryLocation::CpuToGpu,
                             usage: vk::BufferUsageFlags::VERTEX_BUFFER,
                             ..Default::default()
                         },
@@ -410,7 +414,7 @@ impl Renderer {
                     let index_buffer = ctx.create_buffer_with_data(
                         &BufferDescriptor {
                             debug_name: "indices",
-                            location: MemoryLocation::GpuOnly,
+                            location: MemoryLocation::CpuToGpu,
                             usage: vk::BufferUsageFlags::INDEX_BUFFER,
                             ..Default::default()
                         },
