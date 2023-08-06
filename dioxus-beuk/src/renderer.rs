@@ -188,11 +188,11 @@ impl Renderer {
             self.state.tex_manager.write().unwrap().take_delta()
         };
 
-        log::info!(
-            "texture_delta: set {:?} free {:?}",
-            texture_delta.set.len(),
-            texture_delta.free.len()
-        );
+        // log::info!(
+        //     "texture_delta: set {:?} free {:?}",
+        //     texture_delta.set.len(),
+        //     texture_delta.free.len()
+        // );
 
         // free textures
         {

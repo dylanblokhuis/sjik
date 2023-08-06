@@ -1,14 +1,26 @@
 use std::collections::HashMap;
 use std::slice;
-use std::sync::atomic::AtomicI64;
+use std::sync::atomic::{AtomicBool, AtomicI64};
 
 use cpal::{traits::StreamTrait, ChannelCount, SampleRate, Stream};
 use ringbuf::{HeapConsumer, HeapProducer, HeapRb};
 use stainless_ffmpeg::prelude::FormatContext;
 use stainless_ffmpeg::prelude::*;
 use stainless_ffmpeg::probe::Probe;
+use std::sync::Arc;
 
 const ONE_NANOSECOND: i64 = 1000000000;
+
+pub enum MediaCommands {
+    Play,
+    Pause,
+    Seek(i64),
+}
+
+struct MediaState {
+    paused: AtomicBool,
+    audio_clock: AtomicI64,
+}
 
 pub struct MediaDecoder {
     audio_producer: HeapProducer<(i64, f32)>,
@@ -21,6 +33,8 @@ pub struct MediaDecoder {
     video_graph: FilterGraph,
     audio_stream_index: isize,
     video_stream_index: isize,
+    pub command_sender: crossbeam_channel::Sender<MediaCommands>,
+    state: Arc<MediaState>,
 }
 
 impl MediaDecoder {
@@ -158,16 +172,24 @@ impl MediaDecoder {
 
         let (video_producer, mut video_consumer) = HeapRb::<(i64, Vec<u8>)>::new(10).split();
         let (audio_producer, audio_consumer) = HeapRb::<(i64, f32)>::new(50 * 1024 * 1024).split();
-        let audio_clock = std::sync::Arc::new(AtomicI64::new(0));
+        let state = Arc::new(MediaState {
+            paused: AtomicBool::new(true),
+            audio_clock: AtomicI64::new(0),
+        });
 
         std::thread::spawn({
-            let audio_clock = audio_clock.clone();
+            let state = state.clone();
             move || loop {
+                if state.paused.load(std::sync::atomic::Ordering::Acquire) {
+                    std::thread::sleep(std::time::Duration::from_millis(10));
+                    continue;
+                }
                 if video_consumer.is_empty() {
                     std::thread::sleep(std::time::Duration::from_millis(10));
                     continue;
                 }
-                let current_audio_time = audio_clock.load(std::sync::atomic::Ordering::Acquire);
+                let current_audio_time =
+                    state.audio_clock.load(std::sync::atomic::Ordering::Acquire);
 
                 if current_audio_time == 0 {
                     std::thread::sleep(std::time::Duration::from_millis(10));
@@ -196,9 +218,31 @@ impl MediaDecoder {
             audio_consumer,
             channels,
             SampleRate(resample_rate as u32),
-            audio_clock,
+            state.clone(),
         );
         _audio_stream.play().unwrap();
+
+        let (command_sender, command_receiver) = crossbeam_channel::bounded::<MediaCommands>(1);
+
+        std::thread::spawn({
+            let command_receiver = command_receiver.clone();
+            let state = state.clone();
+            move || {
+                while let Ok(command) = command_receiver.recv() {
+                    match command {
+                        MediaCommands::Pause => state
+                            .paused
+                            .store(true, std::sync::atomic::Ordering::Release),
+                        MediaCommands::Play => {
+                            state
+                                .paused
+                                .store(false, std::sync::atomic::Ordering::Release);
+                        }
+                        MediaCommands::Seek(pts) => {}
+                    }
+                }
+            }
+        });
 
         Self {
             audio_producer,
@@ -211,6 +255,8 @@ impl MediaDecoder {
             video_graph,
             video_stream_index: first_video_stream,
             audio_stream_index: first_audio_stream,
+            command_sender,
+            state,
         }
     }
 
@@ -222,6 +268,11 @@ impl MediaDecoder {
 
     pub fn start(&mut self) {
         loop {
+            if self.state.paused.load(std::sync::atomic::Ordering::Acquire) {
+                std::thread::sleep(std::time::Duration::from_millis(10));
+                continue;
+            }
+
             if self.video_producer.len() >= 10 {
                 std::thread::sleep(std::time::Duration::from_millis(10));
                 continue;
@@ -398,7 +449,7 @@ fn setup_audio_stream(
     mut audio_consumer: HeapConsumer<(i64, f32)>,
     channels: ChannelCount,
     sample_rate: SampleRate,
-    audio_clock: std::sync::Arc<AtomicI64>,
+    state: Arc<MediaState>,
 ) -> Stream {
     use cpal::traits::{DeviceTrait, HostTrait};
 
@@ -427,6 +478,12 @@ fn setup_audio_stream(
         .build_output_stream(
             &config,
             move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                if state.paused.load(std::sync::atomic::Ordering::Acquire) {
+                    for sample in data.iter_mut() {
+                        *sample = 0.0;
+                    }
+                    return;
+                }
                 let mut data_without_pts: Vec<(i64, f32)> = vec![(0, 0.0); data.len()];
                 audio_consumer.pop_slice(&mut data_without_pts);
                 for (i, (_, sample)) in data_without_pts.iter().enumerate() {
@@ -436,7 +493,9 @@ fn setup_audio_stream(
                 data_without_pts
                     .last()
                     .map(|(pts, _)| {
-                        audio_clock.store(*pts, std::sync::atomic::Ordering::Release);
+                        state
+                            .audio_clock
+                            .store(*pts, std::sync::atomic::Ordering::Release);
                     })
                     .unwrap();
             },

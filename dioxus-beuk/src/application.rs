@@ -45,10 +45,11 @@ pub struct RendererState {
 
 impl DioxusApp {
     /// Create a new window state and spawn a vdom thread.
-    pub fn new(
+    pub fn new<T: Clone + Send + Sync + 'static>(
         app: fn(Scope) -> Element,
         render_context: &RenderContext,
         proxy: EventLoopProxy<Redraw>,
+        app_context: T,
     ) -> Self {
         let mut rdom = RealDom::new([
             MouseEffected::to_type_erased(),
@@ -79,6 +80,7 @@ impl DioxusApp {
             },
             app,
             proxy,
+            app_context,
         );
 
         let event_handler = BlitzEventHandler::new(focus_state);
@@ -127,7 +129,7 @@ impl DioxusApp {
 }
 
 #[allow(clippy::too_many_arguments)]
-async fn spawn_dom(
+async fn spawn_dom<T: Clone + 'static>(
     rdom: Arc<RwLock<RealDom>>,
     state: RendererState,
     taffy: Arc<Mutex<Taffy>>,
@@ -137,11 +139,9 @@ async fn spawn_dom(
     mut event_receiver: UnboundedReceiver<DomEvent>,
     mut redraw_receiver: UnboundedReceiver<()>,
     vdom_dirty: Arc<FxDashSet<NodeId>>,
+    app_context: T,
 ) -> Option<()> {
-    let dom_context = Rc::new(DomContext {
-        window_size: RefCell::new(*size.lock().unwrap()),
-    });
-    let mut renderer = DioxusRenderer::new(app, &rdom, dom_context, proxy.clone());
+    let mut renderer = DioxusRenderer::new(app, &rdom, app_context, proxy.clone());
     let mut last_size;
 
     // initial render
@@ -195,13 +195,6 @@ async fn spawn_dom(
             Some(event) = event_receiver.recv() => {
                 let DomEvent { name, data, element, bubbles } = event;
 
-                let app_ctx = renderer
-                    .vdom
-                    .base_scope()
-                    .consume_context::<Rc<DomContext>>()
-                    .unwrap();
-                *app_ctx.window_size.borrow_mut() = *size.lock().unwrap();
-
                 let mut rdom = rdom.write().ok()?;
                 renderer.handle_event(rdom.get_mut(element)?, name, data, bubbles);
             }
@@ -210,13 +203,6 @@ async fn spawn_dom(
         let mut rdom = rdom.write().ok()?;
         // render after the event has been handled
         let root_id = rdom.root_id();
-
-        let app_ctx = renderer
-            .vdom
-            .base_scope()
-            .consume_context::<Rc<DomContext>>()
-            .unwrap();
-        *app_ctx.window_size.borrow_mut() = *size.lock().unwrap();
 
         renderer.update(rdom.get_mut(root_id)?);
 
@@ -276,12 +262,13 @@ struct DomManager {
 }
 
 impl DomManager {
-    fn spawn(
+    fn spawn<T: Clone + Send + Sync + 'static>(
         rdom: RealDom,
         state: RendererState,
         size: PhysicalSize<u32>,
         app: fn(Scope) -> Element,
         proxy: EventLoopProxy<Redraw>,
+        app_context: T,
     ) -> Self {
         let rdom: Arc<RwLock<RealDom>> = Arc::new(RwLock::new(rdom));
         let taffy = Arc::new(Mutex::new(Taffy::new()));
@@ -309,6 +296,7 @@ impl DomManager {
                     event_receiver,
                     redraw_receiver,
                     dirty_clone,
+                    app_context,
                 ));
         });
 
@@ -401,19 +389,14 @@ struct DioxusRenderer {
     hot_reload_rx: tokio::sync::mpsc::UnboundedReceiver<dioxus_hot_reload::HotReloadMsg>,
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct DomContext {
-    pub window_size: RefCell<PhysicalSize<u32>>,
-}
-
 impl DioxusRenderer {
-    pub fn new(
+    pub fn new<T: Clone + 'static>(
         app: fn(Scope) -> Element,
         rdom: &Arc<RwLock<RealDom>>,
-        ctx: Rc<DomContext>,
+        app_context: T,
         proxy: EventLoopProxy<Redraw>,
     ) -> Self {
-        let mut vdom = VirtualDom::new(app).with_root_context(ctx);
+        let mut vdom = VirtualDom::new(app).with_root_context(app_context);
         let muts = vdom.rebuild();
         let mut rdom = rdom.write().unwrap();
         let mut dioxus_state = DioxusState::create(&mut rdom);

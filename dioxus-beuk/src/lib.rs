@@ -5,7 +5,6 @@ pub use crate::events::EventData;
 
 mod application;
 pub use application::DioxusApp;
-pub use application::DomContext;
 mod events;
 mod focus;
 mod image;

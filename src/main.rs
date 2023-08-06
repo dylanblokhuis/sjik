@@ -2,10 +2,11 @@ use beuk::ash::vk::PresentModeKHR;
 use beuk::ctx::RenderContextDescriptor;
 use beuk::raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 
-use decoder::MediaDecoder;
+use decoder::{MediaCommands, MediaDecoder};
 use dioxus_beuk::{DioxusApp, Redraw};
 use media_render_pass::MediaRenderPass;
 use present_render_pass::PresentRenderPass;
+use tao::dpi::PhysicalSize;
 use tao::event::Event;
 use tao::event_loop::ControlFlow;
 use tao::{event::WindowEvent, event_loop::EventLoop, window::WindowBuilder};
@@ -22,6 +23,14 @@ pub struct CurrentVideo {
     pub width: u32,
     pub height: u32,
 }
+
+#[derive(Clone)]
+pub struct AppContext {
+    window_size: PhysicalSize<u32>,
+    command_sender: Option<crossbeam_channel::Sender<MediaCommands>>,
+}
+
+pub type AppContextRef = Arc<RwLock<AppContext>>;
 
 fn main() {
     #[cfg(feature = "tracing")]
@@ -54,28 +63,35 @@ fn main() {
         present_mode: PresentModeKHR::FIFO_RELAXED,
     }));
 
+    let app_context = Arc::new(RwLock::new(AppContext {
+        command_sender: None,
+        window_size: window.inner_size(),
+    }));
+
     let current_video: Arc<RwLock<Option<CurrentVideo>>> = Arc::new(RwLock::new(None));
     let (decoder_tx, decoder_rx) = crossbeam_channel::bounded::<Vec<u8>>(1);
 
     std::thread::spawn({
         let current_video = current_video.clone();
-
+        let app_context = app_context.clone();
         move || {
             let mut media_decoder = MediaDecoder::new("http://192.168.178.49:32400/library/parts/1720/1689874581/file.mkv?download=1&X-Plex-Token=J3j74Py7w49SsXrq3ThS", move |frame| {
                 decoder_tx.send(frame).unwrap();
             });
+
             let (width, height) = media_decoder.get_video_size();
             *current_video.write().unwrap() = Some(CurrentVideo { width, height });
+            app_context.write().unwrap().command_sender =
+                Some(media_decoder.command_sender.clone());
             media_decoder.start();
         }
     });
 
     let mut present_node = PresentRenderPass::new(&ctx);
-
     let mut media_node = MediaRenderPass::new(&ctx);
     let media_attachment_handle = media_node.attachment.clone();
 
-    let mut application = DioxusApp::new(ui::app, &ctx, event_loop.create_proxy());
+    let mut application = DioxusApp::new(ui::app, &ctx, event_loop.create_proxy(), app_context);
     let ui_attachment_handle = application.get_attachment_handle().clone();
 
     ctx.command_thread_pool.spawn({

@@ -1,14 +1,16 @@
 use std::{ops::Add, rc::Rc};
 
 use dioxus::prelude::*;
-use dioxus_beuk::DomContext;
+
+use crate::{decoder::MediaCommands, AppContextRef};
 
 pub fn app(cx: Scope) -> Element {
     let count = use_state(cx, || 3);
 
-    let ctx = use_context::<Rc<DomContext>>(cx).unwrap();
-    let window_width = ctx.window_size.borrow().width;
-    let window_height = ctx.window_size.borrow().height;
+    let ctx = use_context::<AppContextRef>(cx).unwrap();
+    let size = ctx.read().unwrap().window_size;
+    let window_width = size.width;
+    let window_height = size.height;
 
     cx.render(rsx! {
       div {
@@ -40,20 +42,38 @@ pub fn app(cx: Scope) -> Element {
               class: "justify-center pt-10 gap-x-10",
 
               div {
-                class: "bg-white/50 w-64 h-64 flex items-start justify-start",
-                onclick: move |_| count.modify(|v| {v.add(1)}),
+                class: "bg-white/50 w-64 h-64 flex items-center justify-center text-sky-900 rounded-5",
+                onclick: move |_| {
+                  ctx.read().unwrap().command_sender.as_ref().unwrap().send(MediaCommands::Play).unwrap();
+                },
 
                 span {
-                  "{count}"
+                  "Play"
                 }
               }
 
               div {
-                class: "bg-white/50 w-64 h-64 flex items-center justify-center",
-                onclick: move |_| count.modify(|v| {v.add(1)}),
+                class: "bg-white/50 w-64 h-64 flex items-center justify-center rounded-5",
+                onclick: move |_| {
+                  ctx.read().unwrap().command_sender.as_ref().unwrap().send(MediaCommands::Pause).unwrap();
+                },
 
                 span {
-                  "{count}"
+                  "Pause"
+                }
+                // div {
+                //   class: "h-6 w-6 bg-red-300",
+                // }
+              }
+
+              div {
+                class: "bg-white/50 w-64 h-64 flex items-center justify-center rounded-5",
+                onclick: move |_| {
+                  ctx.read().unwrap().command_sender.as_ref().unwrap().send(MediaCommands::Pause).unwrap();
+                },
+
+                span {
+                  "Seek forward"
                 }
                 // div {
                 //   class: "h-6 w-6 bg-red-300",
