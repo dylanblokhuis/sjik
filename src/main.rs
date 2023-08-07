@@ -76,7 +76,11 @@ fn main() {
         let current_video = current_video.clone();
         let app_context = app_context.clone();
         move || {
-            let mut media_decoder = MediaDecoder::new(&args.get(1).expect("Please provide an url"), move |frame| {
+            let Some(arg) = args.get(1) else {
+                log::info!("Please provide an url");
+                return;
+            };
+            let mut media_decoder = MediaDecoder::new(arg, move |frame| {
                 decoder_tx.send(frame).unwrap();
             });
 

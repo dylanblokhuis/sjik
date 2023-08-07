@@ -3,19 +3,17 @@ use beuk::ctx::RenderContext;
 use beuk::memory::ResourceHandle;
 use beuk::texture::Texture;
 use dioxus::prelude::{Element, Scope, ScopeId, VirtualDom};
-use epaint::text::FontDefinitions;
-use epaint::{Fonts, TextureManager};
+use epaint::text::{FontData, FontDefinitions};
+use epaint::{FontFamily, Fonts, TextureManager};
 use rustc_hash::FxHashSet;
-use std::cell::RefCell;
 use std::ops::Deref;
-use std::rc::Rc;
 use std::sync::{Arc, Mutex, MutexGuard, RwLock, RwLockWriteGuard};
 use tao::{dpi::PhysicalSize, event_loop::EventLoopProxy};
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 
 use crate::image::ImageExtractor;
 use crate::renderer::Renderer;
-use crate::style::Tailwind;
+use crate::style::{FontProperties, Tailwind};
 use crate::{
     events::{BlitzEventHandler, DomEvent},
     focus::{Focus, FocusState},
@@ -57,15 +55,34 @@ impl DioxusApp {
             ImageExtractor::to_type_erased(),
             Focus::to_type_erased(),
             PreventDefault::to_type_erased(),
+            FontProperties::to_type_erased(),
         ]);
 
         let focus_state = FocusState::create(&mut rdom);
+
+        let mut definitions = FontDefinitions::default();
+        definitions.font_data.insert(
+            "Inter-Regular".to_string(),
+            FontData::from_static(include_bytes!("./style/fonts/Inter-Regular.ttf")),
+        );
+        definitions.font_data.insert(
+            "Inter-Bold".to_string(),
+            FontData::from_static(include_bytes!("./style/fonts/Inter-Bold.ttf")),
+        );
+        definitions.families.insert(
+            FontFamily::Name("Inter-Regular".into()),
+            vec!["Inter-Regular".to_owned()],
+        );
+        definitions.families.insert(
+            FontFamily::Name("Inter-Bold".into()),
+            vec!["Inter-Bold".to_owned()],
+        );
+        definitions
+            .families
+            .insert(FontFamily::Proportional, vec!["Inter-Regular".to_owned()]);
+
         let state = RendererState {
-            fonts: Arc::new(RwLock::new(Fonts::new(
-                1.0,
-                8 * 1024,
-                FontDefinitions::default(),
-            ))),
+            fonts: Arc::new(RwLock::new(Fonts::new(1.0, 2 * 1024, definitions))),
             tex_manager: Arc::new(RwLock::new(TextureManager::default())),
         };
         let renderer = Renderer::new(render_context, state.clone());

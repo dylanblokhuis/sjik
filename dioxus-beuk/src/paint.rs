@@ -1,5 +1,4 @@
 use dioxus_native_core::prelude::*;
-use epaint::emath::Align;
 use epaint::{ClippedShape, Color32, FontId};
 
 use taffy::prelude::Layout;
@@ -8,7 +7,7 @@ use taffy::Taffy;
 use crate::focus::Focused;
 use crate::image::ImageExtractor;
 use crate::renderer::Renderer;
-use crate::style::Tailwind;
+use crate::style::{FontProperties, Tailwind};
 
 use crate::RealDom;
 
@@ -31,6 +30,7 @@ fn render_node(taffy: &Taffy, node: NodeRef, renderer: &mut Renderer, location: 
         NodeType::Text(TextNode { text, .. }) => {
             let parent = node.parent().unwrap();
             let tailwind: &Tailwind = &parent.get().unwrap();
+            let font: &FontProperties = &parent.get().unwrap();
 
             let shape = epaint::Shape::text(
                 &renderer.state.fonts.read().unwrap(),
@@ -38,13 +38,10 @@ fn render_node(taffy: &Taffy, node: NodeRef, renderer: &mut Renderer, location: 
                     x: location.x,
                     y: location.y,
                 },
-                epaint::emath::Align2::LEFT_TOP,
+                tailwind.text.align,
                 text,
-                FontId {
-                    family: epaint::FontFamily::Monospace,
-                    size: 18.0,
-                },
-                tailwind.color,
+                font.0.clone(),
+                tailwind.text.color,
             );
             let clip = shape.visual_bounding_rect();
             renderer.shapes.push(ClippedShape(clip, shape));

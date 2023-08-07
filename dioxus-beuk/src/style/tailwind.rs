@@ -3,14 +3,16 @@ use std::collections::HashMap;
 use dioxus_native_core::prelude::*;
 use dioxus_native_core_macro::partial_derive_state;
 
-use epaint::emath::Align;
-use epaint::{Color32, FontId, Rounding};
+use epaint::emath::Align2;
+use epaint::{Color32, Rounding};
 use log::debug;
 use shipyard::Component;
 use taffy::prelude::*;
 use taffy::style::Style;
 
 use crate::application::RendererState;
+
+use super::FontProperties;
 
 type Colors = HashMap<&'static str, HashMap<&'static str, [u8; 4]>>;
 #[derive(Clone, PartialEq, Debug, Component)]
@@ -21,12 +23,27 @@ pub(crate) struct Border {
 }
 
 #[derive(Clone, PartialEq, Debug, Component)]
-pub(crate) struct Tailwind {
+pub(crate) struct TextStyling {
     pub color: Color32,
+    pub align: Align2,
+}
+
+impl Default for TextStyling {
+    fn default() -> Self {
+        Self {
+            color: Color32::WHITE,
+            align: Align2::LEFT_TOP,
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Debug, Component)]
+pub(crate) struct Tailwind {
     pub background_color: Color32,
     pub border: Border,
     pub style: Style,
     pub node: Option<taffy::tree::NodeId>,
+    pub text: TextStyling,
 }
 
 /**
@@ -37,7 +54,7 @@ pub(crate) struct Tailwind {
 impl State for Tailwind {
     type ChildDependencies = (Self,);
     type ParentDependencies = ();
-    type NodeDependencies = ();
+    type NodeDependencies = (FontProperties,);
 
     const NODE_MASK: NodeMaskBuilder<'static> = NodeMaskBuilder::new()
         .with_attrs(AttributeMaskBuilder::Some(&["class"]))
@@ -47,7 +64,7 @@ impl State for Tailwind {
     fn update<'a>(
         &mut self,
         node_view: NodeView,
-        _: <Self::NodeDependencies as Dependancy>::ElementBorrowed<'a>,
+        font: <Self::NodeDependencies as Dependancy>::ElementBorrowed<'a>,
         _: Option<<Self::ParentDependencies as Dependancy>::ElementBorrowed<'a>>,
         children: Vec<<Self::ChildDependencies as Dependancy>::ElementBorrowed<'a>>,
         context: &SendAnyMap,
@@ -60,25 +77,25 @@ impl State for Tailwind {
         if let Some(text) = node_view.text() {
             // we just need the size of this shape for the layout
             // hence no colors being used
+
             let shape = epaint::Shape::text(
                 &state.fonts.read().unwrap(),
                 epaint::Pos2 { x: 0.0, y: 0.0 },
                 epaint::emath::Align2::LEFT_TOP,
                 text,
-                FontId {
-                    family: epaint::FontFamily::Monospace,
-                    size: 18.0,
-                },
+                font.0 .0.clone(),
                 epaint::Color32::WHITE,
             );
             let rect = shape.visual_bounding_rect();
             let width = rect.width();
-            let height = rect.height();
+
+            let font_pad_width = font.0 .0.size / 7.5;
+            let line_height = font.0 .0.size * 1.15;
 
             let style = Style {
                 size: Size {
-                    width: Dimension::Length(width + 3.0),
-                    height: Dimension::Length(height + 3.0),
+                    width: Dimension::Length(width + font_pad_width),
+                    height: Dimension::Length(line_height),
                 },
                 ..Default::default()
             };
@@ -145,7 +162,7 @@ impl State for Tailwind {
 
             if let Some(class) = class.strip_prefix("text-") {
                 if let Some(color) = Self::handle_color(class, &colors) {
-                    self.color = color;
+                    self.text.color = color;
                 }
             }
 
@@ -304,9 +321,9 @@ impl Default for Tailwind {
                 width: 0.0,
             },
             background_color: Color32::TRANSPARENT,
-            color: Color32::WHITE,
             node: None,
             style: Style::default(),
+            text: TextStyling::default(),
         }
     }
 }

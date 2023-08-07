@@ -232,7 +232,7 @@ impl Renderer {
 
             let data = match delta.image.clone() {
                 epaint::ImageData::Color(image) => image.pixels,
-                epaint::ImageData::Font(font) => font.srgba_pixels(None).collect(),
+                epaint::ImageData::Font(font) => font.srgba_pixels(Some(0.2)).collect(),
             };
             let data = bytemuck::cast_slice(&data);
 
