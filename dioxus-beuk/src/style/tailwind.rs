@@ -11,6 +11,7 @@ use taffy::prelude::*;
 use taffy::style::Style;
 
 use crate::application::RendererState;
+use crate::image::ImageExtractor;
 
 use super::FontProperties;
 
@@ -54,7 +55,7 @@ pub(crate) struct Tailwind {
 impl State for Tailwind {
     type ChildDependencies = (Self,);
     type ParentDependencies = ();
-    type NodeDependencies = (FontProperties,);
+    type NodeDependencies = (FontProperties, ImageExtractor);
 
     const NODE_MASK: NodeMaskBuilder<'static> = NodeMaskBuilder::new()
         .with_attrs(AttributeMaskBuilder::Some(&["class"]))
@@ -64,7 +65,7 @@ impl State for Tailwind {
     fn update<'a>(
         &mut self,
         node_view: NodeView,
-        font: <Self::NodeDependencies as Dependancy>::ElementBorrowed<'a>,
+        (font, image): <Self::NodeDependencies as Dependancy>::ElementBorrowed<'a>,
         _: Option<<Self::ParentDependencies as Dependancy>::ElementBorrowed<'a>>,
         children: Vec<<Self::ChildDependencies as Dependancy>::ElementBorrowed<'a>>,
         context: &SendAnyMap,
@@ -83,14 +84,14 @@ impl State for Tailwind {
                 epaint::Pos2 { x: 0.0, y: 0.0 },
                 epaint::emath::Align2::LEFT_TOP,
                 text,
-                font.0 .0.clone(),
+                font.0.clone(),
                 epaint::Color32::WHITE,
             );
             let rect = shape.visual_bounding_rect();
             let width = rect.width();
 
-            let font_pad_width = font.0 .0.size / 7.5;
-            let line_height = font.0 .0.size * 1.15;
+            let font_pad_width = font.0.size / 7.5;
+            let line_height = font.0.size * 1.15;
 
             let style = Style {
                 size: Size {
@@ -264,6 +265,33 @@ impl State for Tailwind {
             if let Some(class) = class.strip_prefix("gap-y-") {
                 let gap = LengthPercentage::Length(class.parse::<f32>().unwrap_or(0.0));
                 style.gap.height = gap;
+            }
+        }
+
+        // use the image size if it's available
+        if image.size != [0.0, 0.0] {
+            let aspect_ratio = image.size[0] / image.size[1];
+
+            // if both dimensions are AUTO, default to original image size
+            if style.size.width == Dimension::AUTO && style.size.height == Dimension::AUTO {
+                style.size.width = Dimension::Length(image.size[0]);
+                style.size.height = Dimension::Length(image.size[1]);
+            }
+            // if we're scaling the height based on the new width
+            else if style.size.width != Dimension::AUTO && style.size.height == Dimension::AUTO {
+                let new_width = match style.size.width {
+                    Dimension::Length(val) => val,
+                    _ => image.size[0], // use old width if it's not a length
+                };
+                style.size.height = Dimension::Length(new_width / aspect_ratio);
+            }
+            // if we're scaling the width based on the new height
+            else if style.size.height != Dimension::AUTO && style.size.width == Dimension::AUTO {
+                let new_height = match style.size.height {
+                    Dimension::Length(val) => val,
+                    _ => image.size[1], // use old height if it's not a length
+                };
+                style.size.width = Dimension::Length(new_height * aspect_ratio);
             }
         }
 

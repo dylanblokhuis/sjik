@@ -14,6 +14,7 @@ use crate::application::RendererState;
 pub(crate) struct ImageExtractor {
     pub path: String,
     pub texture_id: epaint::TextureId,
+    pub size: [f32; 2],
 }
 
 /**
@@ -87,6 +88,7 @@ impl State for ImageExtractor {
             );
             self.texture_id = id;
             self.path = src_attr.value.to_string();
+            self.size = [pixmap_size.width() as f32, pixmap_size.height() as f32];
         } else {
             let Ok(reader) = ImageReader::open(path.clone()) else {
                 log::error!("Failed to open image: {}", path.display());
@@ -107,6 +109,7 @@ impl State for ImageExtractor {
             );
             self.texture_id = id;
             self.path = src_attr.value.to_string();
+            self.size = [size[0] as f32, size[1] as f32];
         }
 
         true
