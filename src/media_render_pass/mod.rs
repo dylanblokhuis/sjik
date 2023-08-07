@@ -577,6 +577,7 @@ void main() {
             .get_mut(self.frame_buffer.as_ref().unwrap())
             .unwrap();
         buffer.copy_from_slice(frame, 0);
+
         log::debug!("Copying frame to gpu");
         self.copy_yuv420_frame_to_gpu(ctx);
 
@@ -613,5 +614,6 @@ void main() {
             ctx.device.cmd_draw_indexed(command_buffer, 6, 1, 0, 0, 1);
             ctx.end_rendering(command_buffer);
         });
+        log::debug!("Frame copied to gpu");
     }
 }

@@ -42,7 +42,7 @@ pub fn app(cx: Scope) -> Element {
               class: "justify-center pt-10 gap-x-10",
 
               div {
-                class: "bg-white/50 w-64 h-64 flex items-center justify-center text-sky-900 rounded-5",
+                class: "bg-white/50 h-64 px-20 flex items-center justify-center text-sky-900 rounded-100",
                 onclick: move |_| {
                   ctx.read().unwrap().command_sender.as_ref().unwrap().send(MediaCommands::Play).unwrap();
                 },
@@ -53,7 +53,7 @@ pub fn app(cx: Scope) -> Element {
               }
 
               div {
-                class: "bg-white/50 w-64 h-64 flex items-center justify-center rounded-5",
+                class: "bg-white/50 h-64 px-20 flex items-center justify-center rounded-100",
                 onclick: move |_| {
                   ctx.read().unwrap().command_sender.as_ref().unwrap().send(MediaCommands::Pause).unwrap();
                 },
@@ -67,7 +67,7 @@ pub fn app(cx: Scope) -> Element {
               }
 
               div {
-                class: "bg-white/50 w-64 h-64 flex items-center justify-center rounded-5",
+                class: "bg-white/50 h-64 px-20 flex items-center justify-center rounded-100",
                 onclick: move |_| {
                   ctx.read().unwrap().command_sender.as_ref().unwrap().send(MediaCommands::Pause).unwrap();
                 },

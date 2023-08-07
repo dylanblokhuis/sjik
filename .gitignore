@@ -1,3 +1,4 @@
 /target
 ffmpeg-master-*
 .vscode
+.DS_Store

@@ -185,6 +185,7 @@ impl MediaDecoder {
                     continue;
                 }
                 if video_consumer.is_empty() {
+                    log::debug!("Video frame queue is empty");
                     std::thread::sleep(std::time::Duration::from_millis(10));
                     continue;
                 }
@@ -192,6 +193,7 @@ impl MediaDecoder {
                     state.audio_clock.load(std::sync::atomic::Ordering::Acquire);
 
                 if current_audio_time == 0 {
+                    log::debug!("No audio clock..");
                     std::thread::sleep(std::time::Duration::from_millis(10));
                     continue;
                 }
@@ -319,17 +321,9 @@ impl MediaDecoder {
                     let pts_nano = av_rescale_q(bet, stream, av_make_q(1, ONE_NANOSECOND as i32));
 
                     let frame = *frame.frame;
-                    log::debug!("ln 0 {:?}", frame.linesize[0]);
-                    log::debug!("ln 1 {:?}", frame.linesize[1]);
-                    log::debug!("ln 2 {:?}", frame.linesize[2]);
-                    log::debug!("ln 3 {:?}", frame.linesize[3]);
-                    log::debug!("ln 4 {:?}", frame.linesize[4]);
 
-                    log::debug!("d 0 {:?}", frame.data[0]);
-                    log::debug!("d 1 {:?}", frame.data[1]);
-                    log::debug!("d 2 {:?}", frame.data[2]);
-                    log::debug!("d 3 {:?}", frame.data[3]);
-                    log::debug!("d 4 {:?}", frame.data[4]);
+                    log::debug!("linesize cells {:?}", frame.linesize);
+                    log::debug!("data cells {:?}", frame.data);
 
                     let color_data = match self.video_decoder.get_pix_fmt_name().as_str() {
                         "yuv420p" => self.frame_to_yuv420_3_plane(frame),
@@ -365,6 +359,8 @@ impl MediaDecoder {
                         av_make_q(1, ONE_NANOSECOND as i32),
                     );
 
+                    log::debug!("audio pts {:?}", pts_nano);
+
                     let samples_with_pts: Vec<(i64, f32)> = data
                         .iter()
                         .map(|sample| (pts_nano, (*sample as f32) / i32::MAX as f32))
@@ -383,9 +379,7 @@ impl MediaDecoder {
         let u_plane_size = (frame.linesize[1] * (height / 2)) as usize;
         let v_plane_size = (frame.linesize[2] * (height / 2)) as usize;
 
-        log::debug!("y size {:?}", y_plane_size);
-        log::debug!("u size {:?}", u_plane_size);
-        log::debug!("v size {:?}", v_plane_size);
+        log::debug!("y size {:?} - u size {:?} - v size {:?}", y_plane_size, u_plane_size, v_plane_size);
 
         let mut vec = vec![0; y_plane_size + u_plane_size + v_plane_size];
 
@@ -493,6 +487,9 @@ fn setup_audio_stream(
                 data_without_pts
                     .last()
                     .map(|(pts, _)| {
+                        if *pts == 0 {
+                            return;
+                        }
                         state
                             .audio_clock
                             .store(*pts, std::sync::atomic::Ordering::Release);

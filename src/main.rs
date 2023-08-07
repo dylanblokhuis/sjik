@@ -49,6 +49,7 @@ fn main() {
 
     std::env::set_var("RUST_LOG", "info");
     simple_logger::SimpleLogger::new().env().init().unwrap();
+    let args: Vec<String> = std::env::args().collect();
     let event_loop = EventLoop::<Redraw>::with_user_event();
 
     let window = WindowBuilder::new()
@@ -75,7 +76,7 @@ fn main() {
         let current_video = current_video.clone();
         let app_context = app_context.clone();
         move || {
-            let mut media_decoder = MediaDecoder::new("http://192.168.178.49:32400/library/parts/1720/1689874581/file.mkv?download=1&X-Plex-Token=J3j74Py7w49SsXrq3ThS", move |frame| {
+            let mut media_decoder = MediaDecoder::new(&args.get(1).expect("Please provide an url"), move |frame| {
                 decoder_tx.send(frame).unwrap();
             });
 
