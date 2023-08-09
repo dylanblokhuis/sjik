@@ -6,13 +6,14 @@ use beuk::buffer::{Buffer, BufferDescriptor, MemoryLocation};
 use beuk::ctx::SamplerDesc;
 use beuk::memory::ResourceHandle;
 use beuk::pipeline::GraphicsPipeline;
-use beuk::texture::Texture;
+use beuk::texture::{Texture, TransitionDesc};
 use beuk::{
     ctx::RenderContext,
     pipeline::{GraphicsPipelineDescriptor, PrimitiveState},
     shaders::Shader,
 };
 
+use crate::decoder::DecodedFrame;
 use crate::CurrentVideo;
 
 #[repr(C, align(16))]
@@ -34,7 +35,6 @@ pub struct MediaRenderPass {
     index_buffer: ResourceHandle<Buffer>,
     pub yuv: Option<ResourceHandle<Texture>>,
     pub frame_buffer: Option<ResourceHandle<Buffer>>,
-    pub uniform_buffer: Option<ResourceHandle<Buffer>>,
     pub attachment: ResourceHandle<Texture>,
 }
 
@@ -116,64 +116,67 @@ impl MediaRenderPass {
             index_buffer,
             yuv: None,
             frame_buffer: None,
-            uniform_buffer: None,
             attachment: attachment_handle,
         }
     }
 
-    pub fn setup_buffers(&mut self, ctx: &RenderContext, current_video: &CurrentVideo) {
-        if self.yuv.is_some() && self.frame_buffer.is_some() && self.uniform_buffer.is_some() {
+    pub fn setup_buffers(
+        &mut self,
+        ctx: &RenderContext,
+        current_video: &CurrentVideo,
+        frame: &DecodedFrame,
+    ) {
+        if self.yuv.is_some() && self.frame_buffer.is_some() {
             return;
         }
 
-        let video_format = vk::Format::G8_B8R8_2PLANE_420_UNORM;
-        let index = match video_format {
+        let video_format = match frame.linesizes.len() {
             // YUV420SP
-            vk::Format::G8_B8R8_2PLANE_420_UNORM => 0,
+            2 => vk::Format::G8_B8R8_2PLANE_420_UNORM,
             // YUV420P
-            vk::Format::G8_B8_R8_3PLANE_420_UNORM => 1,
+            3 => vk::Format::G8_B8_R8_3PLANE_420_UNORM,
             // YUV420SP HDR
-            vk::Format::G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16 => 2,
-            // YUV420P HDR
-            vk::Format::G10X6_B10X6_R10X6_3PLANE_420_UNORM_3PACK16 => 3,
-            _ => panic!("Unsupported format"),
+            // 3 => vk::Format::G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16 => 2,
+            // // YUV420P HDR
+            // vk::Format::G10X6_B10X6_R10X6_3PLANE_420_UNORM_3PACK16 => 3,
+            x => panic!("Unsupported format with {x} linesizes"),
         };
 
-        let vertex_shader = Shader::from_source_text(
-            &ctx.device,
-            include_str!("./shader.vert"),
-            "shader.vert",
-            beuk::shaders::ShaderKind::Vertex,
-            "main",
-        );
-
-        // planning on compiling this based on the required format
-        let fragment_shader = Shader::from_source_text(
-            &ctx.device,
-            r#"#version 450
-#extension GL_ARB_separate_shader_objects : enable
-#extension GL_ARB_shading_language_420pack : enable
-
-layout (set = 0, binding = 0) uniform sampler2D textureLinearYUV420P;
-layout (set = 0, binding = 1) uniform Uniform {
-    int index;
-} ubo;
-
-layout (location = 0) in vec2 o_uv;
-layout (location = 0) out vec4 a_frag_color;
-
-void main() {
-    a_frag_color = texture(textureLinearYUV420P, o_uv);
-}
-            "#,
-            "shader.frag",
-            beuk::shaders::ShaderKind::Fragment,
-            "main",
-        );
-
         let pipeline_handle = ctx.create_graphics_pipeline(&GraphicsPipelineDescriptor {
-            vertex_shader,
-            fragment_shader,
+            vertex_shader: Shader::from_source_text(
+                &ctx.device,
+                include_str!("./shader.vert"),
+                "shader.vert",
+                beuk::shaders::ShaderKind::Vertex,
+                "main",
+            ),
+            fragment_shader: Shader::from_source_text(
+                &ctx.device,
+                &r#"
+                #version 450
+                    #extension GL_ARB_separate_shader_objects : enable
+                    #extension GL_ARB_shading_language_420pack : enable
+
+                    layout (set = 0, binding = 0) uniform sampler2D textureLinearYUV420P;
+
+                    layout (location = 0) in vec2 o_uv;
+                    layout (location = 0) out vec4 a_frag_color;
+
+                    void main() {
+                        a_frag_color = texture(textureLinearYUV420P, o_uv);
+                    }"#
+                .replace(
+                    "textureLinearYUV420P",
+                    match video_format {
+                        vk::Format::G8_B8R8_2PLANE_420_UNORM => "textureLinearYUV420SP",
+                        vk::Format::G8_B8_R8_3PLANE_420_UNORM => "textureLinearYUV420P",
+                        _ => panic!("Unsupported format"),
+                    },
+                ),
+                "shader.frag",
+                beuk::shaders::ShaderKind::Fragment,
+                "main",
+            ),
             vertex_input: PipelineVertexInputStateCreateInfo::default()
                 .vertex_attribute_descriptions(&[
                     vk::VertexInputAttributeDescription {
@@ -226,19 +229,7 @@ void main() {
             },
         );
 
-        let uniform_handle = ctx.create_buffer_with_data(
-            &BufferDescriptor {
-                debug_name: "uniform",
-                size: std::mem::size_of::<Uniform>() as DeviceSize,
-                location: MemoryLocation::CpuToGpu,
-                usage: BufferUsageFlags::UNIFORM_BUFFER,
-            },
-            bytemuck::cast_slice(&[Uniform { index }]),
-            0,
-        );
-
         {
-            let uniform = ctx.buffer_manager.get(&uniform_handle).unwrap();
             let texture = ctx.texture_manager.get(&yuv).unwrap();
 
             let (sampler_conversion, _) = ctx
@@ -284,62 +275,15 @@ void main() {
             let pipeline = ctx.graphics_pipelines.get(&pipeline_handle).unwrap();
             unsafe {
                 ctx.device.update_descriptor_sets(
-                    &[
-                        // 2 plane sampler
-                        vk::WriteDescriptorSet::default()
-                            .dst_set(pipeline.descriptor_sets[0])
-                            .dst_binding(0)
-                            .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                            .image_info(std::slice::from_ref(
-                                &vk::DescriptorImageInfo::default()
-                                    .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                                    .image_view(view),
-                            )),
-                        // // 3 plane sampler
-                        // vk::WriteDescriptorSet::default()
-                        //     .dst_set(pipeline.descriptor_sets[0])
-                        //     .dst_binding(0)
-                        //     .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                        //     .dst_array_element(1)
-                        //     .image_info(std::slice::from_ref(
-                        //         &vk::DescriptorImageInfo::default()
-                        //             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                        //             .image_view(view),
-                        //     )),
-                        // // 2 plane sampler hdr
-                        // vk::WriteDescriptorSet::default()
-                        //     .dst_set(pipeline.descriptor_sets[0])
-                        //     .dst_binding(0)
-                        //     .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                        //     .dst_array_element(2)
-                        //     .image_info(std::slice::from_ref(
-                        //         &vk::DescriptorImageInfo::default()
-                        //             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                        //             .image_view(view),
-                        //     )),
-                        // // 3 plane sampler hdr
-                        // vk::WriteDescriptorSet::default()
-                        //     .dst_set(pipeline.descriptor_sets[0])
-                        //     .dst_binding(0)
-                        //     .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                        //     .dst_array_element(3)
-                        //     .image_info(std::slice::from_ref(
-                        //         &vk::DescriptorImageInfo::default()
-                        //             .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                        //             .image_view(view),
-                        //     )),
-                        // uniform
-                        vk::WriteDescriptorSet::default()
-                            .dst_set(pipeline.descriptor_sets[0])
-                            .dst_binding(1)
-                            .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-                            .buffer_info(std::slice::from_ref(
-                                &vk::DescriptorBufferInfo::default()
-                                    .buffer(uniform.buffer)
-                                    .range(uniform.size)
-                                    .offset(0),
-                            )),
-                    ],
+                    &[vk::WriteDescriptorSet::default()
+                        .dst_set(pipeline.descriptor_sets[0])
+                        .dst_binding(0)
+                        .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
+                        .image_info(std::slice::from_ref(
+                            &vk::DescriptorImageInfo::default()
+                                .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                                .image_view(view),
+                        ))],
                     &[],
                 );
             };
@@ -361,11 +305,10 @@ void main() {
 
         self.yuv = Some(yuv);
         self.frame_buffer = Some(frame_buffer);
-        self.uniform_buffer = Some(uniform_handle);
         self.pipeline_handle = Some(pipeline_handle);
     }
 
-    pub fn copy_yuv420_frame_to_gpu(&self, ctx: &RenderContext) {
+    pub fn copy_yuv420_frame_to_gpu(&self, ctx: &RenderContext, frame: &DecodedFrame) {
         let Some(yuv) = self.yuv.as_ref() else {
             return;
         };
@@ -374,96 +317,149 @@ void main() {
             return;
         };
 
+        let buffer = ctx
+            .buffer_manager
+            .get_mut(self.frame_buffer.as_ref().unwrap())
+            .unwrap();
+        buffer.copy_from_slice(&frame.data, 0);
+
         ctx.record_submit(|ctx, command_buffer| unsafe {
-            let texture = ctx.texture_manager.get(&yuv).unwrap();
-            let frame_buffer = ctx.buffer_manager.get(&frame_buffer).unwrap();
+            let texture = ctx.texture_manager.get_mut(yuv).unwrap();
+            let frame_buffer = ctx.buffer_manager.get(frame_buffer).unwrap();
 
-            let layout_transition_barriers = vk::ImageMemoryBarrier::default()
-                .image(texture.image)
-                .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_READ)
-                .dst_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
-                .old_layout(vk::ImageLayout::UNDEFINED)
-                .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-                .subresource_range(
-                    vk::ImageSubresourceRange::default()
-                        .aspect_mask(vk::ImageAspectFlags::PLANE_0 | vk::ImageAspectFlags::PLANE_1)
-                        .layer_count(1)
-                        .level_count(1),
-                );
-
-            ctx.device.cmd_pipeline_barrier(
+            texture.transition(
+                &ctx.device,
                 command_buffer,
-                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                vk::DependencyFlags::empty(),
-                &[],
-                &[],
-                &[layout_transition_barriers],
+                &TransitionDesc {
+                    new_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                    new_access_mask: vk::AccessFlags::TRANSFER_WRITE,
+                    new_stage_mask: vk::PipelineStageFlags::TRANSFER,
+                },
             );
 
             let y_plane_size = (texture.extent.width * texture.extent.height) as usize;
+            let u_plane_size = (texture.extent.width / 2 * texture.extent.height / 2) as usize;
 
-            // println!("copy y_plane {:?}", y_plane_size);
-            // println!("copy uv_plane {:?}", uv_plane_size);
+            match texture.format {
+                vk::Format::G8_B8R8_2PLANE_420_UNORM => {
+                    log::debug!("copying PLANE_0 with offset {:?}", 0);
+                    ctx.device.cmd_copy_buffer_to_image(
+                        command_buffer,
+                        frame_buffer.buffer,
+                        texture.image,
+                        vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                        &[vk::BufferImageCopy::default()
+                            .buffer_offset(0)
+                            .buffer_row_length(0)
+                            .buffer_image_height(0)
+                            .image_subresource(vk::ImageSubresourceLayers {
+                                aspect_mask: vk::ImageAspectFlags::PLANE_0,
+                                layer_count: 1,
+                                ..Default::default()
+                            })
+                            .image_extent(texture.extent)],
+                    );
 
-            ctx.device.cmd_copy_buffer_to_image(
+                    log::debug!("copying PLANE_1 with offset {:?}", y_plane_size);
+                    ctx.device.cmd_copy_buffer_to_image(
+                        command_buffer,
+                        frame_buffer.buffer,
+                        texture.image,
+                        vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                        &[vk::BufferImageCopy::default()
+                            .buffer_offset(y_plane_size as DeviceSize)
+                            .buffer_row_length(0)
+                            .buffer_image_height(0)
+                            .image_subresource(vk::ImageSubresourceLayers {
+                                aspect_mask: vk::ImageAspectFlags::PLANE_1,
+                                layer_count: 1,
+                                ..Default::default()
+                            })
+                            .image_extent(vk::Extent3D {
+                                width: texture.extent.width / 2,
+                                height: texture.extent.height / 2,
+                                depth: 1,
+                            })],
+                    );
+                }
+                vk::Format::G8_B8_R8_3PLANE_420_UNORM => {
+                    log::debug!("copying PLANE_0 with offset {:?}", 0);
+                    ctx.device.cmd_copy_buffer_to_image(
+                        command_buffer,
+                        frame_buffer.buffer,
+                        texture.image,
+                        vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                        &[vk::BufferImageCopy::default()
+                            .buffer_offset(0)
+                            .buffer_row_length(0)
+                            .buffer_image_height(0)
+                            .image_subresource(vk::ImageSubresourceLayers {
+                                aspect_mask: vk::ImageAspectFlags::PLANE_0,
+                                layer_count: 1,
+                                ..Default::default()
+                            })
+                            .image_extent(texture.extent)],
+                    );
+
+                    log::debug!("copying PLANE_1 with offset {:?}", y_plane_size);
+                    ctx.device.cmd_copy_buffer_to_image(
+                        command_buffer,
+                        frame_buffer.buffer,
+                        texture.image,
+                        vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                        &[vk::BufferImageCopy::default()
+                            .buffer_offset(y_plane_size as DeviceSize)
+                            .buffer_row_length(0)
+                            .buffer_image_height(0)
+                            .image_subresource(vk::ImageSubresourceLayers {
+                                aspect_mask: vk::ImageAspectFlags::PLANE_1,
+                                layer_count: 1,
+                                ..Default::default()
+                            })
+                            .image_extent(vk::Extent3D {
+                                width: texture.extent.width / 2,
+                                height: texture.extent.height / 2,
+                                depth: 1,
+                            })],
+                    );
+
+                    log::debug!(
+                        "copying PLANE_2 with offset {:?}",
+                        y_plane_size + u_plane_size
+                    );
+                    ctx.device.cmd_copy_buffer_to_image(
+                        command_buffer,
+                        frame_buffer.buffer,
+                        texture.image,
+                        vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+                        &[vk::BufferImageCopy::default()
+                            .buffer_offset((y_plane_size + u_plane_size) as DeviceSize)
+                            .buffer_row_length(0)
+                            .buffer_image_height(0)
+                            .image_subresource(vk::ImageSubresourceLayers {
+                                aspect_mask: vk::ImageAspectFlags::PLANE_2,
+                                layer_count: 1,
+                                ..Default::default()
+                            })
+                            .image_extent(vk::Extent3D {
+                                width: texture.extent.width / 2,
+                                height: texture.extent.height / 2,
+                                depth: 1,
+                            })],
+                    );
+                }
+                _ => panic!("Unsupported format"),
+            }
+
+            texture.transition(
+                &ctx.device,
                 command_buffer,
-                frame_buffer.buffer,
-                texture.image,
-                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                &[vk::BufferImageCopy::default()
-                    .buffer_offset(0)
-                    .buffer_row_length(0)
-                    .buffer_image_height(0)
-                    .image_subresource(vk::ImageSubresourceLayers {
-                        aspect_mask: vk::ImageAspectFlags::PLANE_0,
-                        layer_count: 1,
-                        ..Default::default()
-                    })
-                    .image_extent(texture.extent)],
+                &TransitionDesc {
+                    new_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+                    new_access_mask: vk::AccessFlags::TRANSFER_WRITE,
+                    new_stage_mask: vk::PipelineStageFlags::TRANSFER,
+                },
             );
-
-            ctx.device.cmd_copy_buffer_to_image(
-                command_buffer,
-                frame_buffer.buffer,
-                texture.image,
-                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                &[vk::BufferImageCopy::default()
-                    .buffer_offset(y_plane_size as DeviceSize)
-                    .buffer_row_length(0)
-                    .buffer_image_height(0)
-                    .image_subresource(vk::ImageSubresourceLayers {
-                        aspect_mask: vk::ImageAspectFlags::PLANE_1,
-                        layer_count: 1,
-                        ..Default::default()
-                    })
-                    .image_extent(vk::Extent3D {
-                        width: texture.extent.width / 2,
-                        height: texture.extent.height / 2,
-                        depth: 1,
-                    })],
-            );
-
-            // ctx.device.cmd_copy_buffer_to_image(
-            //     command_buffer,
-            //     frame_buffer.buffer,
-            //     texture.image,
-            //     vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            //     &[vk::BufferImageCopy::default()
-            //         .buffer_offset((y_plane_size + uv_plane_size) as DeviceSize)
-            //         .buffer_row_length(0)
-            //         .buffer_image_height(0)
-            //         .image_subresource(vk::ImageSubresourceLayers {
-            //             aspect_mask: vk::ImageAspectFlags::PLANE_2,
-            //             layer_count: 1,
-            //             ..Default::default()
-            //         })
-            //         .image_extent(vk::Extent3D {
-            //             width: texture.extent.width / 2,
-            //             height: texture.extent.height / 2,
-            //             depth: 1,
-            //         })],
-            // );
         });
     }
 
@@ -571,15 +567,9 @@ void main() {
     }
 
     #[tracing::instrument(name = "MediaRenderPass::draw", skip_all)]
-    pub fn draw(&self, ctx: &RenderContext, frame: &[u8]) {
-        let buffer = ctx
-            .buffer_manager
-            .get_mut(self.frame_buffer.as_ref().unwrap())
-            .unwrap();
-        buffer.copy_from_slice(frame, 0);
-
+    pub fn draw(&self, ctx: &RenderContext, frame: &DecodedFrame) {
         log::debug!("Copying frame to gpu");
-        self.copy_yuv420_frame_to_gpu(ctx);
+        self.copy_yuv420_frame_to_gpu(ctx, frame);
 
         ctx.record_submit(|ctx, command_buffer| unsafe {
             let color_attachments = &[vk::RenderingAttachmentInfo::default()
@@ -596,7 +586,7 @@ void main() {
             ctx.begin_rendering(command_buffer, color_attachments, None);
 
             ctx.graphics_pipelines
-                .get(&self.pipeline_handle.as_ref().unwrap())
+                .get(self.pipeline_handle.as_ref().unwrap())
                 .unwrap()
                 .bind(&ctx.device, command_buffer);
             ctx.device.cmd_bind_vertex_buffers(

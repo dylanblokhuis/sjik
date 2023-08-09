@@ -2,7 +2,7 @@ use beuk::ash::vk::PresentModeKHR;
 use beuk::ctx::RenderContextDescriptor;
 use beuk::raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 
-use decoder::{MediaCommands, MediaDecoder};
+use decoder::{DecodedFrame, MediaCommands, MediaDecoder, MediaDecoderOptions};
 use dioxus_beuk::{DioxusApp, Redraw};
 use media_render_pass::MediaRenderPass;
 use present_render_pass::PresentRenderPass;
@@ -22,6 +22,7 @@ mod ui;
 pub struct CurrentVideo {
     pub width: u32,
     pub height: u32,
+    // pub format: vk::Format,
 }
 
 #[derive(Clone)]
@@ -47,7 +48,7 @@ fn main() {
         dioxus_beuk::hot_reload::Config::new().root(env!("CARGO_MANIFEST_DIR")),
     );
 
-    std::env::set_var("RUST_LOG", "info");
+    std::env::set_var("RUST_LOG", "log");
     simple_logger::SimpleLogger::new().env().init().unwrap();
     let args: Vec<String> = std::env::args().collect();
     let event_loop = EventLoop::<Redraw>::with_user_event();
@@ -70,7 +71,7 @@ fn main() {
     }));
 
     let current_video: Arc<RwLock<Option<CurrentVideo>>> = Arc::new(RwLock::new(None));
-    let (decoder_tx, decoder_rx) = crossbeam_channel::bounded::<Vec<u8>>(1);
+    let (decoder_tx, decoder_rx) = crossbeam_channel::bounded::<DecodedFrame>(1);
 
     std::thread::spawn({
         let current_video = current_video.clone();
@@ -80,9 +81,13 @@ fn main() {
                 log::info!("Please provide an url");
                 return;
             };
-            let mut media_decoder = MediaDecoder::new(arg, move |frame| {
-                decoder_tx.send(frame).unwrap();
-            });
+            let mut media_decoder = MediaDecoder::new(
+                arg,
+                MediaDecoderOptions { use_hw_accel: true },
+                move |frame| {
+                    decoder_tx.send(frame).unwrap();
+                },
+            );
 
             let (width, height) = media_decoder.get_video_size();
             *current_video.write().unwrap() = Some(CurrentVideo { width, height });
@@ -101,11 +106,13 @@ fn main() {
 
     ctx.command_thread_pool.spawn({
         let ctx = ctx.clone();
+        let event_loop_proxy = event_loop.create_proxy();
         move || {
-            while let Ok(event) = decoder_rx.recv() {
+            while let Ok(frame) = decoder_rx.recv() {
                 if let Some(current_video) = current_video.read().unwrap().as_ref() {
-                    media_node.setup_buffers(&ctx, current_video);
-                    media_node.draw(&ctx, &event);
+                    media_node.setup_buffers(&ctx, current_video, &frame);
+                    media_node.draw(&ctx, &frame);
+                    event_loop_proxy.send_event(Redraw(false)).unwrap();
                 }
             }
         }
@@ -115,11 +122,11 @@ fn main() {
     let (event_tx, event_rx) = crossbeam_channel::unbounded::<Event<'static, Redraw>>();
     ctx.command_thread_pool.spawn({
         let ctx = ctx.clone();
+        let event_loop_proxy = event_loop.create_proxy();
         move || {
             application.render(&ctx);
             while let Ok(event) = event_rx.recv() {
                 application.send_event(&event);
-
                 match event {
                     Event::WindowEvent {
                         event: WindowEvent::Resized(physical_size),
@@ -128,9 +135,13 @@ fn main() {
                     } => {
                         application.set_size(physical_size);
                     }
-
-                    tao::event::Event::RedrawRequested(_) => {
-                        application.render(&ctx);
+                    Event::WindowEvent { .. } => {
+                        event_loop_proxy.send_event(Redraw(true)).unwrap();
+                    }
+                    Event::UserEvent(redraw) => {
+                        if redraw.0 {
+                            application.render(&ctx);
+                        }
                     }
 
                     _ => (),
@@ -149,9 +160,6 @@ fn main() {
                 ..
             } => *control_flow = ControlFlow::Exit,
 
-            tao::event::Event::MainEventsCleared => {
-                window.request_redraw();
-            }
             tao::event::Event::RedrawRequested(_) => {
                 let present_index = ctx.acquire_present_index();
                 present_node.combine_and_draw(

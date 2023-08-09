@@ -134,13 +134,12 @@ impl DioxusApp {
     }
 
     pub fn send_event(&mut self, event: &TaoEvent) {
-        let evts;
-        {
+        let evts = {
             let rdom = &mut self.dom.rdom();
             let taffy = &self.dom.taffy();
             self.event_handler.register_event(event, rdom, taffy);
-            evts = self.event_handler.drain_events();
-        }
+            self.event_handler.drain_events()
+        };
         self.dom.send_events(evts);
     }
 }
@@ -201,7 +200,7 @@ async fn spawn_dom<T: Clone + 'static>(
         for k in to_rerender.into_iter() {
             vdom_dirty.insert(k);
         }
-        proxy.send_event(Redraw).unwrap();
+        proxy.send_event(Redraw(true)).unwrap();
     }
 
     loop {
@@ -261,7 +260,7 @@ async fn spawn_dom<T: Clone + 'static>(
                 vdom_dirty.insert(k);
             }
 
-            proxy.send_event(Redraw).unwrap();
+            proxy.send_event(Redraw(true)).unwrap();
         }
     }
 }

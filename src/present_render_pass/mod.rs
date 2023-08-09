@@ -3,9 +3,7 @@ use beuk::{
     buffer::{Buffer, BufferDescriptor, MemoryLocation},
     ctx::{RenderContext, SamplerDesc},
     memory::ResourceHandle,
-    pipeline::{
-        BlendState, GraphicsPipeline, GraphicsPipelineDescriptor, MultisampleState, PrimitiveState,
-    },
+    pipeline::{BlendState, GraphicsPipeline, GraphicsPipelineDescriptor, PrimitiveState},
     texture::Texture,
 };
 
