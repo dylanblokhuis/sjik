@@ -354,7 +354,7 @@ checksum = "604178f6c5c21f02dc555784810edfb88d34ac2c73b2eae109655649ee73ce3d"
 [[package]]
 name = "beuk"
 version = "0.1.0"
-source = "git+https://github.com/dylanblokhuis/beuk?rev=c8b6927d0290856ab5b5e5a095fe6a4ed064f29f#c8b6927d0290856ab5b5e5a095fe6a4ed064f29f"
+source = "git+https://github.com/dylanblokhuis/beuk?rev=a7ce85494db906c9727b36316817d37884ad3a91#a7ce85494db906c9727b36316817d37884ad3a91"
 dependencies = [
  "anyhow",
  "arrayvec",

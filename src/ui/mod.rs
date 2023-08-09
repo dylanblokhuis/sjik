@@ -1,12 +1,8 @@
-use std::{ops::Add, rc::Rc};
-
 use dioxus::prelude::*;
 
 use crate::{decoder::MediaCommands, AppContextRef};
 
 pub fn app(cx: Scope) -> Element {
-    let count = use_state(cx, || 3);
-
     let ctx = use_context::<AppContextRef>(cx).unwrap();
     let size = ctx.read().unwrap().window_size;
     let window_width = size.width;
