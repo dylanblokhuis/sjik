@@ -45,6 +45,7 @@ pub(crate) struct Tailwind {
     pub style: Style,
     pub node: Option<taffy::tree::NodeId>,
     pub text: TextStyling,
+    pub hovered: bool,
 }
 
 /**
@@ -138,133 +139,12 @@ impl State for Tailwind {
         let classes: Vec<&str> = classes.split(' ').collect();
 
         let mut style = Style::default();
-        for class in classes.iter() {
-            if class == &"flex-col" {
-                style.display = Display::Flex;
-                style.flex_direction = FlexDirection::Column;
-            } else if class == &"flex-row" {
-                style.display = Display::Flex;
-                style.flex_direction = FlexDirection::Row;
-            }
-
-            if let Some(class) = class.strip_prefix("w-") {
-                style.size.width = Self::handle_size(class);
-            }
-
-            if let Some(class) = class.strip_prefix("h-") {
-                style.size.height = Self::handle_size(class);
-            }
-
-            if let Some(class) = class.strip_prefix("bg-") {
-                if let Some(color) = Self::handle_color(class, &colors) {
-                    self.background_color = color;
+        for class in classes {
+            self.handle_class(&mut style, &colors, class);
+            if self.hovered {
+                if let Some(class) = class.strip_prefix("hover:") {
+                    self.handle_class(&mut style, &colors, class);
                 }
-            }
-
-            if let Some(class) = class.strip_prefix("text-") {
-                if let Some(color) = Self::handle_color(class, &colors) {
-                    self.text.color = color;
-                }
-            }
-
-            if let Some(class) = class.strip_prefix("p-") {
-                let padding = LengthPercentage::Length(class.parse::<f32>().unwrap_or(0.0));
-                style.padding = Rect {
-                    top: padding,
-                    bottom: padding,
-                    left: padding,
-                    right: padding,
-                }
-            }
-
-            if let Some(class) = class.strip_prefix("py-") {
-                let padding = LengthPercentage::Length(class.parse::<f32>().unwrap_or(0.0));
-                style.padding.top = padding;
-                style.padding.bottom = padding;
-            }
-
-            if let Some(class) = class.strip_prefix("px-") {
-                let padding = LengthPercentage::Length(class.parse::<f32>().unwrap_or(0.0));
-                style.padding.left = padding;
-                style.padding.right = padding;
-            }
-
-            if let Some(class) = class.strip_prefix("pt-") {
-                let padding = LengthPercentage::Length(class.parse::<f32>().unwrap_or(0.0));
-                style.padding.top = padding;
-            }
-
-            if let Some(class) = class.strip_prefix("pb-") {
-                let padding = LengthPercentage::Length(class.parse::<f32>().unwrap_or(0.0));
-                style.padding.bottom = padding;
-            }
-
-            if let Some(class) = class.strip_prefix("rounded-") {
-                let value = class.parse::<f32>().unwrap_or(0.0);
-                self.border.radius.ne = value;
-                self.border.radius.nw = value;
-                self.border.radius.se = value;
-                self.border.radius.sw = value;
-            }
-
-            if let Some(class) = class.strip_prefix("border-") {
-                if let Some(color) = Self::handle_color(class, &colors) {
-                    self.border.color = color;
-                } else {
-                    let value = class.parse::<f32>().unwrap_or(0.0);
-                    self.border.width = value;
-                }
-            }
-
-            if let Some(class) = class.strip_prefix("justify-") {
-                style.justify_content = Some(match class {
-                    "start" => JustifyContent::Start,
-                    "end" => JustifyContent::End,
-                    "center" => JustifyContent::Center,
-                    "between" => JustifyContent::SpaceBetween,
-                    "around" => JustifyContent::SpaceAround,
-                    "evenly" => JustifyContent::SpaceEvenly,
-                    "stretch" => JustifyContent::Stretch,
-                    _ => panic!("Unknown justify content {class}"),
-                })
-            }
-
-            if let Some(class) = class.strip_prefix("items-") {
-                match class {
-                    "start" => style.align_items = Some(AlignItems::FlexStart),
-                    "end" => style.align_items = Some(AlignItems::FlexEnd),
-                    "center" => style.align_items = Some(AlignItems::Center),
-                    "baseline" => style.align_items = Some(AlignItems::Baseline),
-                    "stretch" => style.align_items = Some(AlignItems::Stretch),
-                    _ => debug!("Unknown align items {class}"),
-                }
-            }
-
-            if let Some(class) = class.strip_prefix("flex-") {
-                match class {
-                    "wrap" => style.flex_wrap = FlexWrap::Wrap,
-                    "wrap-reverse" => style.flex_wrap = FlexWrap::WrapReverse,
-                    "nowrap" => style.flex_wrap = FlexWrap::NoWrap,
-                    _ => debug!("Unknown flex wrap {class}"),
-                }
-            }
-
-            if let Some(class) = class.strip_prefix("gap-") {
-                let gap = LengthPercentage::Length(class.parse::<f32>().unwrap_or(0.0));
-                style.gap = Size {
-                    width: gap,
-                    height: gap,
-                };
-            }
-
-            if let Some(class) = class.strip_prefix("gap-x-") {
-                let gap = LengthPercentage::Length(class.parse::<f32>().unwrap_or(0.0));
-                style.gap.width = gap;
-            }
-
-            if let Some(class) = class.strip_prefix("gap-y-") {
-                let gap = LengthPercentage::Length(class.parse::<f32>().unwrap_or(0.0));
-                style.gap.height = gap;
             }
         }
 
@@ -348,6 +228,7 @@ impl Default for Tailwind {
                 radius: Rounding::none(),
                 width: 0.0,
             },
+            hovered: false,
             background_color: Color32::TRANSPARENT,
             node: None,
             style: Style::default(),
@@ -415,6 +296,136 @@ impl Tailwind {
                 .get(variant)
                 .map(|&[r, g, b, _]| Color32::from_rgba_unmultiplied(r, g, b, alpha))
         })
+    }
+
+    fn handle_class(&mut self, style: &mut Style, colors: &Colors, class: &str) {
+        if class == "flex-col" {
+            style.display = Display::Flex;
+            style.flex_direction = FlexDirection::Column;
+        } else if class == "flex-row" {
+            style.display = Display::Flex;
+            style.flex_direction = FlexDirection::Row;
+        }
+
+        if let Some(class) = class.strip_prefix("w-") {
+            style.size.width = Self::handle_size(class);
+        }
+
+        if let Some(class) = class.strip_prefix("h-") {
+            style.size.height = Self::handle_size(class);
+        }
+
+        if let Some(class) = class.strip_prefix("bg-") {
+            if let Some(color) = Self::handle_color(class, colors) {
+                self.background_color = color;
+            }
+        }
+
+        if let Some(class) = class.strip_prefix("text-") {
+            if let Some(color) = Self::handle_color(class, colors) {
+                self.text.color = color;
+            }
+        }
+
+        if let Some(class) = class.strip_prefix("p-") {
+            let padding = LengthPercentage::Length(class.parse::<f32>().unwrap_or(0.0));
+            style.padding = Rect {
+                top: padding,
+                bottom: padding,
+                left: padding,
+                right: padding,
+            }
+        }
+
+        if let Some(class) = class.strip_prefix("py-") {
+            let padding = LengthPercentage::Length(class.parse::<f32>().unwrap_or(0.0));
+            style.padding.top = padding;
+            style.padding.bottom = padding;
+        }
+
+        if let Some(class) = class.strip_prefix("px-") {
+            let padding = LengthPercentage::Length(class.parse::<f32>().unwrap_or(0.0));
+            style.padding.left = padding;
+            style.padding.right = padding;
+        }
+
+        if let Some(class) = class.strip_prefix("pt-") {
+            let padding = LengthPercentage::Length(class.parse::<f32>().unwrap_or(0.0));
+            style.padding.top = padding;
+        }
+
+        if let Some(class) = class.strip_prefix("pb-") {
+            let padding = LengthPercentage::Length(class.parse::<f32>().unwrap_or(0.0));
+            style.padding.bottom = padding;
+        }
+
+        if let Some(class) = class.strip_prefix("rounded-") {
+            let value = class.parse::<f32>().unwrap_or(0.0);
+            self.border.radius.ne = value;
+            self.border.radius.nw = value;
+            self.border.radius.se = value;
+            self.border.radius.sw = value;
+        }
+
+        if let Some(class) = class.strip_prefix("border-") {
+            if let Some(color) = Self::handle_color(class, colors) {
+                self.border.color = color;
+            } else {
+                let value = class.parse::<f32>().unwrap_or(0.0);
+                self.border.width = value;
+            }
+        }
+
+        if let Some(class) = class.strip_prefix("justify-") {
+            style.justify_content = Some(match class {
+                "start" => JustifyContent::Start,
+                "end" => JustifyContent::End,
+                "center" => JustifyContent::Center,
+                "between" => JustifyContent::SpaceBetween,
+                "around" => JustifyContent::SpaceAround,
+                "evenly" => JustifyContent::SpaceEvenly,
+                "stretch" => JustifyContent::Stretch,
+                _ => panic!("Unknown justify content {class}"),
+            })
+        }
+
+        if let Some(class) = class.strip_prefix("items-") {
+            match class {
+                "start" => style.align_items = Some(AlignItems::FlexStart),
+                "end" => style.align_items = Some(AlignItems::FlexEnd),
+                "center" => style.align_items = Some(AlignItems::Center),
+                "baseline" => style.align_items = Some(AlignItems::Baseline),
+                "stretch" => style.align_items = Some(AlignItems::Stretch),
+                _ => debug!("Unknown align items {class}"),
+            }
+        }
+
+        if let Some(class) = class.strip_prefix("flex-") {
+            match class {
+                "wrap" => style.flex_wrap = FlexWrap::Wrap,
+                "wrap-reverse" => style.flex_wrap = FlexWrap::WrapReverse,
+                "nowrap" => style.flex_wrap = FlexWrap::NoWrap,
+                _ => debug!("Unknown flex wrap {class}"),
+            }
+        }
+
+        if let Some(class) = class.strip_prefix("gap-") {
+            let gap = LengthPercentage::Length(class.parse::<f32>().unwrap_or(0.0));
+            style.gap = Size {
+                width: gap,
+                height: gap,
+            };
+        }
+
+        if let Some(class) = class.strip_prefix("gap-x-") {
+            let gap = LengthPercentage::Length(class.parse::<f32>().unwrap_or(0.0));
+            style.gap.width = gap;
+        }
+
+        if let Some(class) = class.strip_prefix("gap-y-") {
+            let gap = LengthPercentage::Length(class.parse::<f32>().unwrap_or(0.0));
+            style.gap.height = gap;
+        }
     }
 }
 

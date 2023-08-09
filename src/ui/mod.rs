@@ -47,7 +47,7 @@ pub fn app(cx: Scope) -> Element {
               class: "justify-center pt-10 gap-x-10",
 
               div {
-                class: "bg-white/50 h-64 px-20 flex items-center justify-center text-sky-900 rounded-5",
+                class: "bg-white/50 h-64 px-20 flex items-center justify-center text-sky-900 rounded-5 hover:bg-white/60",
                 onclick: move |_| {
                   ctx.read().unwrap().command_sender.as_ref().unwrap().send(MediaCommands::Play).unwrap();
                 },
