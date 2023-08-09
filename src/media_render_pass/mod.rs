@@ -160,17 +160,32 @@ impl MediaRenderPass {
             0,
         );
 
+        let is_10_bit = frame.linesizes.iter().sum::<i32>() > 15000;
+        log::info!(
+            "is_10_bit: {} ({})",
+            is_10_bit,
+            frame.linesizes.iter().sum::<i32>()
+        );
         let video_format = match frame.linesizes.len() {
             // YUV420SP
-            2 => vk::Format::G8_B8R8_2PLANE_420_UNORM,
+            2 => {
+                if is_10_bit {
+                    vk::Format::G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16
+                } else {
+                    vk::Format::G8_B8R8_2PLANE_420_UNORM
+                }
+            }
             // YUV420P
-            3 => vk::Format::G8_B8_R8_3PLANE_420_UNORM,
-            // YUV420SP HDR
-            // 3 => vk::Format::G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16 => 2,
-            // // YUV420P HDR
-            // vk::Format::G10X6_B10X6_R10X6_3PLANE_420_UNORM_3PACK16 => 3,
+            3 => {
+                if is_10_bit {
+                    vk::Format::G10X6_B10X6_R10X6_3PLANE_420_UNORM_3PACK16
+                } else {
+                    vk::Format::G8_B8_R8_3PLANE_420_UNORM
+                }
+            }
             x => panic!("Unsupported format with {x} linesizes"),
         };
+        log::info!("Using format {:?}", video_format);
 
         let pipeline_handle = ctx.create_graphics_pipeline(&GraphicsPipelineDescriptor {
             vertex_shader: Shader::from_source_text(
@@ -200,6 +215,12 @@ impl MediaRenderPass {
                     match video_format {
                         vk::Format::G8_B8R8_2PLANE_420_UNORM => "textureLinearYUV420SP",
                         vk::Format::G8_B8_R8_3PLANE_420_UNORM => "textureLinearYUV420P",
+                        vk::Format::G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16 => {
+                            "textureLinearYUV420SP10"
+                        }
+                        vk::Format::G10X6_B10X6_R10X6_3PLANE_420_UNORM_3PACK16 => {
+                            "textureLinearYUV420P10"
+                        }
                         _ => panic!("Unsupported format"),
                     },
                 ),
@@ -319,19 +340,14 @@ impl MediaRenderPass {
             };
         }
 
-        let size = current_video.width * current_video.height;
-        let fullscreen_of_yuv = size + (size / 2);
-
-        log::debug!("Creating frame buffer of size {}", fullscreen_of_yuv);
+        log::debug!("Creating frame buffer of size {}", frame.data.len());
 
         let frame_buffer = ctx.create_buffer(&BufferDescriptor {
             debug_name: "frame",
-            size: fullscreen_of_yuv as DeviceSize,
+            size: frame.data.len() as DeviceSize,
             location: MemoryLocation::CpuToGpu,
             usage: BufferUsageFlags::TRANSFER_SRC | BufferUsageFlags::TRANSFER_DST,
         });
-
-        log::debug!("Created frame buffer of size {}", fullscreen_of_yuv);
 
         self.vertex_buffer = Some(vertex_buffer);
         self.yuv = Some(yuv);
@@ -372,11 +388,12 @@ impl MediaRenderPass {
             },
         );
 
-        let y_plane_size = (texture.extent.width * texture.extent.height) as usize;
-        let u_plane_size = (texture.extent.width / 2 * texture.extent.height / 2) as usize;
+        let y_plane_size = frame.linesizes[0] as usize * texture.extent.height as usize;
+        let u_plane_size = frame.linesizes[1] as usize * texture.extent.height as usize / 2;
 
         match texture.format {
-            vk::Format::G8_B8R8_2PLANE_420_UNORM => {
+            vk::Format::G8_B8R8_2PLANE_420_UNORM
+            | vk::Format::G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16 => {
                 log::debug!("copying PLANE_0 with offset {:?}", 0);
                 ctx.device.cmd_copy_buffer_to_image(
                     command_buffer,
@@ -417,7 +434,8 @@ impl MediaRenderPass {
                         })],
                 );
             }
-            vk::Format::G8_B8_R8_3PLANE_420_UNORM => {
+            vk::Format::G8_B8_R8_3PLANE_420_UNORM
+            | vk::Format::G10X6_B10X6_R10X6_3PLANE_420_UNORM_3PACK16 => {
                 log::debug!("copying PLANE_0 with offset {:?}", 0);
                 ctx.device.cmd_copy_buffer_to_image(
                     command_buffer,

@@ -48,7 +48,7 @@ fn main() {
         dioxus_beuk::hot_reload::Config::new().root(env!("CARGO_MANIFEST_DIR")),
     );
 
-    std::env::set_var("RUST_LOG", "info");
+    std::env::set_var("RUST_LOG", "debug");
     simple_logger::SimpleLogger::new().env().init().unwrap();
     let args: Vec<String> = std::env::args().collect();
     let event_loop = EventLoop::<Redraw>::with_user_event();

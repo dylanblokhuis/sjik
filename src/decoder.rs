@@ -49,7 +49,7 @@ pub struct MediaDecoderOptions {
     pub use_hw_accel: bool,
 }
 
-const VIDEO_FRAME_QUEUE_SIZE: usize = 10;
+const VIDEO_FRAME_QUEUE_SIZE: usize = 100;
 
 impl MediaDecoder {
     pub fn new<F>(path_or_url: &str, options: MediaDecoderOptions, new_frame_callback: F) -> Self
@@ -58,7 +58,7 @@ impl MediaDecoder {
     {
         let mut probe = Probe::new(path_or_url);
         probe.process(log::LevelFilter::Off).unwrap();
-        // println!("{}", probe.format.unwrap());
+        log::debug!("{}", probe.format.unwrap());
 
         let mut format_context = FormatContext::new(path_or_url).unwrap();
         format_context.open_input().unwrap();
@@ -112,7 +112,7 @@ impl MediaDecoder {
                 parameters.insert(
                     "pix_fmts".to_string(),
                     // yuv420p, yuv444p, yuv422p, yuv420p10le, yuv444p10le, yuv422p10le
-                    ParameterValue::String("yuv420p".to_string()),
+                    ParameterValue::String(video_decoder.get_pix_fmt_name()),
                 );
 
                 let filter = Filter {
@@ -347,7 +347,7 @@ impl MediaDecoder {
                     let linesizes: Vec<i32> =
                         frame.linesize.iter().filter(|x| **x > 0).cloned().collect();
 
-                    let data = self.frame_to_yuv420_3_plane(frame);
+                    let data = self.combine_yuv_to_vec(frame);
                     log::debug!("color_data {:?}", data.len());
                     self.video_producer
                         .push(DecodedFrame {
@@ -391,7 +391,7 @@ impl MediaDecoder {
         }
     }
 
-    pub unsafe fn frame_to_yuv420_3_plane(&self, frame: AVFrame) -> Vec<u8> {
+    pub unsafe fn combine_yuv_to_vec(&self, frame: AVFrame) -> Vec<u8> {
         let height = frame.height;
 
         let y_plane_size = (frame.linesize[0] * height) as usize;
@@ -415,50 +415,6 @@ impl MediaDecoder {
         vec[y_plane_size..(y_plane_size + u_plane_size)].copy_from_slice(u);
         vec[(y_plane_size + u_plane_size)..].copy_from_slice(v);
 
-        vec
-    }
-
-    pub unsafe fn frame_to_yuv420_2_plane(&self, frame: AVFrame) -> Vec<u8> {
-        let height = frame.height;
-
-        let y_plane_size = (frame.linesize[0] * height) as usize;
-        let uv_plane_size = (frame.linesize[1] * (height / 2)) as usize;
-
-        log::debug!("y size {:?}", y_plane_size);
-        log::debug!("uv size {:?}", uv_plane_size);
-
-        let mut vec = vec![0; y_plane_size + uv_plane_size];
-
-        let y = slice::from_raw_parts(frame.data[0], y_plane_size);
-        let uv = slice::from_raw_parts(frame.data[1], uv_plane_size);
-
-        vec[..y_plane_size].copy_from_slice(y);
-        vec[y_plane_size..].copy_from_slice(uv);
-
-        vec
-    }
-
-    pub unsafe fn frame_to_yuv420_101e(&self, frame: AVFrame) -> Vec<u8> {
-        let width = frame.width;
-        let height = frame.height;
-
-        let size = (width * height) as usize;
-
-        log::debug!("y size {:?}", size);
-        log::debug!("u size {:?}", size / 2);
-        log::debug!("v size {:?}", size / 2);
-        let mut vec = vec![0; size + (size / 2) + (size / 2)];
-        let y = slice::from_raw_parts(frame.data[0], size);
-        let u = slice::from_raw_parts(frame.data[1], size / 2);
-        let v = slice::from_raw_parts(frame.data[2], size / 2);
-
-        log::debug!("copy y");
-        vec[..size].copy_from_slice(y);
-        log::debug!("copy u");
-        vec[size..(size + size / 2)].copy_from_slice(u);
-        log::debug!("copy v");
-        vec[(size + size / 2)..].copy_from_slice(v);
-        log::debug!("done");
         vec
     }
 }
