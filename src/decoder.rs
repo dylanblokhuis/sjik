@@ -49,6 +49,8 @@ pub struct MediaDecoderOptions {
     pub use_hw_accel: bool,
 }
 
+const VIDEO_FRAME_QUEUE_SIZE: usize = 10;
+
 impl MediaDecoder {
     pub fn new<F>(path_or_url: &str, options: MediaDecoderOptions, new_frame_callback: F) -> Self
     where
@@ -183,7 +185,8 @@ impl MediaDecoder {
             audio_graph
         };
 
-        let (video_producer, mut video_consumer) = HeapRb::<DecodedFrame>::new(10).split();
+        let (video_producer, mut video_consumer) =
+            HeapRb::<DecodedFrame>::new(VIDEO_FRAME_QUEUE_SIZE).split();
         let (audio_producer, audio_consumer) = HeapRb::<(i64, f32)>::new(50 * 1024 * 1024).split();
         let state = Arc::new(MediaState {
             paused: AtomicBool::new(true),
@@ -311,7 +314,7 @@ impl MediaDecoder {
                 continue;
             }
 
-            if self.video_producer.len() >= 10 {
+            if self.video_producer.len() >= VIDEO_FRAME_QUEUE_SIZE {
                 std::thread::sleep(std::time::Duration::from_millis(10));
                 continue;
             }
