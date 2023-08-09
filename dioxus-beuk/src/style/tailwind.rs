@@ -405,7 +405,7 @@ impl Tailwind {
                 "wrap" => style.flex_wrap = FlexWrap::Wrap,
                 "wrap-reverse" => style.flex_wrap = FlexWrap::WrapReverse,
                 "nowrap" => style.flex_wrap = FlexWrap::NoWrap,
-                _ => debug!("Unknown flex wrap {class}"),
+                _ => {}
             }
         }
 
