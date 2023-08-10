@@ -3,9 +3,7 @@ use beuk::{
     buffer::{Buffer, BufferDescriptor, MemoryLocation},
     ctx::{RenderContext, SamplerDesc},
     memory::ResourceHandle,
-    pipeline::{
-        BlendState, GraphicsPipeline, GraphicsPipelineDescriptor, MultisampleState, PrimitiveState,
-    },
+    pipeline::{BlendState, GraphicsPipeline, GraphicsPipelineDescriptor, PrimitiveState},
     texture::Texture,
 };
 
@@ -149,7 +147,7 @@ impl PresentRenderPass {
                         .image_info(std::slice::from_ref(
                             &vk::DescriptorImageInfo::default()
                                 .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                                .image_view(*ctx.get_texture_view(&ui_attachment).unwrap())
+                                .image_view(*ctx.get_texture_view(ui_attachment).unwrap())
                                 .sampler(
                                     *ctx.immutable_samplers
                                         .get(&SamplerDesc {
@@ -167,7 +165,7 @@ impl PresentRenderPass {
                         .image_info(std::slice::from_ref(
                             &vk::DescriptorImageInfo::default()
                                 .image_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                                .image_view(*ctx.get_texture_view(&media_attachment).unwrap())
+                                .image_view(*ctx.get_texture_view(media_attachment).unwrap())
                                 .sampler(
                                     *ctx.immutable_samplers
                                         .get(&SamplerDesc {

@@ -24,7 +24,7 @@ struct MediaState {
 
 pub struct MediaDecoder {
     audio_producer: HeapProducer<(i64, f32)>,
-    video_producer: HeapProducer<(i64, Vec<u8>)>,
+    video_producer: HeapProducer<DecodedFrame>,
     _audio_stream: Stream,
     format_context: FormatContext,
     audio_decoder: AudioDecoder,
@@ -35,16 +35,30 @@ pub struct MediaDecoder {
     video_stream_index: isize,
     pub command_sender: crossbeam_channel::Sender<MediaCommands>,
     state: Arc<MediaState>,
+    options: MediaDecoderOptions,
 }
 
+#[derive(Debug)]
+pub struct DecodedFrame {
+    pub data: Vec<u8>,
+    pub linesizes: Vec<i32>,
+    pub pts: i64,
+}
+
+pub struct MediaDecoderOptions {
+    pub use_hw_accel: bool,
+}
+
+const VIDEO_FRAME_QUEUE_SIZE: usize = 100;
+
 impl MediaDecoder {
-    pub fn new<F>(path_or_url: &str, new_frame_callback: F) -> Self
+    pub fn new<F>(path_or_url: &str, options: MediaDecoderOptions, new_frame_callback: F) -> Self
     where
-        F: Fn(Vec<u8>) + Send + Sync + 'static,
+        F: Fn(DecodedFrame) + Send + Sync + 'static,
     {
         let mut probe = Probe::new(path_or_url);
         probe.process(log::LevelFilter::Off).unwrap();
-        // println!("{}", probe.format.unwrap());
+        log::debug!("{}", probe.format.unwrap());
 
         let mut format_context = FormatContext::new(path_or_url).unwrap();
         format_context.open_input().unwrap();
@@ -77,6 +91,7 @@ impl MediaDecoder {
             "video_decoder".to_string(),
             &format_context,
             first_video_stream,
+            options.use_hw_accel,
         )
         .unwrap();
 
@@ -97,7 +112,7 @@ impl MediaDecoder {
                 parameters.insert(
                     "pix_fmts".to_string(),
                     // yuv420p, yuv444p, yuv422p, yuv420p10le, yuv444p10le, yuv422p10le
-                    ParameterValue::String("yuv420p".to_string()),
+                    ParameterValue::String(video_decoder.get_pix_fmt_name()),
                 );
 
                 let filter = Filter {
@@ -170,7 +185,8 @@ impl MediaDecoder {
             audio_graph
         };
 
-        let (video_producer, mut video_consumer) = HeapRb::<(i64, Vec<u8>)>::new(10).split();
+        let (video_producer, mut video_consumer) =
+            HeapRb::<DecodedFrame>::new(VIDEO_FRAME_QUEUE_SIZE).split();
         let (audio_producer, audio_consumer) = HeapRb::<(i64, f32)>::new(50 * 1024 * 1024).split();
         let state = Arc::new(MediaState {
             paused: AtomicBool::new(true),
@@ -198,7 +214,7 @@ impl MediaDecoder {
                     continue;
                 }
 
-                let oldest_frame_in_queue = video_consumer.iter().next().unwrap().0;
+                let oldest_frame_in_queue = video_consumer.iter().next().unwrap().pts;
 
                 if oldest_frame_in_queue > current_audio_time {
                     let sleep_time = std::time::Duration::new(
@@ -210,7 +226,7 @@ impl MediaDecoder {
                     spin_sleep::sleep(sleep_time);
                 }
 
-                if let Some((_, frame)) = video_consumer.pop() {
+                if let Some(frame) = video_consumer.pop() {
                     new_frame_callback(frame);
                 }
             }
@@ -259,13 +275,36 @@ impl MediaDecoder {
             audio_stream_index: first_audio_stream,
             command_sender,
             state,
+            options,
         }
     }
 
     pub fn get_video_size(&self) -> (u32, u32) {
         let width = self.video_decoder.get_width() as u32;
         let height = self.video_decoder.get_height() as u32;
+
         (width, height)
+    }
+
+    pub fn get_decoded_frame(&mut self, frame: Frame) -> Vec<Frame> {
+        let frame = unsafe {
+            if self.options.use_hw_accel {
+                let sw_frame = av_frame_alloc();
+                av_hwframe_transfer_data(sw_frame, frame.frame, 0);
+
+                Frame {
+                    frame: sw_frame,
+                    index: self.video_stream_index as usize,
+                    name: None,
+                }
+            } else {
+                frame
+            }
+        };
+
+        let (_, frames) = self.video_graph.process(&[], &[frame]).unwrap();
+
+        frames
     }
 
     pub fn start(&mut self) {
@@ -275,7 +314,7 @@ impl MediaDecoder {
                 continue;
             }
 
-            if self.video_producer.len() >= 10 {
+            if self.video_producer.len() >= VIDEO_FRAME_QUEUE_SIZE {
                 std::thread::sleep(std::time::Duration::from_millis(10));
                 continue;
             }
@@ -293,27 +332,7 @@ impl MediaDecoder {
                     // bet gets lost in the process
                     let bet: i64 = (*frame.frame).best_effort_timestamp;
 
-                    let sw_frame = av_frame_alloc();
-                    let tmp_frame = if (*frame.frame).format
-                        == self.video_decoder.hw_pixel_format.unwrap() as i32
-                    {
-                        av_hwframe_transfer_data(sw_frame, frame.frame, 0);
-                        sw_frame
-                    } else {
-                        frame.frame
-                    };
-
-                    let (_, frames) = self
-                        .video_graph
-                        .process(
-                            &[],
-                            &[Frame {
-                                frame: tmp_frame,
-                                index: self.video_stream_index as usize,
-                                name: None,
-                            }],
-                        )
-                        .unwrap();
+                    let frames = self.get_decoded_frame(frame);
                     let frame = frames.first().unwrap();
 
                     let stream =
@@ -325,16 +344,18 @@ impl MediaDecoder {
                     log::debug!("linesize cells {:?}", frame.linesize);
                     log::debug!("data cells {:?}", frame.data);
 
-                    let color_data = match self.video_decoder.get_pix_fmt_name().as_str() {
-                        "yuv420p" => self.frame_to_yuv420_3_plane(frame),
-                        "yuv420p10le" => self.frame_to_yuv420_3_plane(frame),
-                        "dxva2_vld" => self.frame_to_yuv420_3_plane(frame),
-                        "cuda" => self.frame_to_yuv420_3_plane(frame),
-                        "videotoolbox_vld" => self.frame_to_yuv420_3_plane(frame),
-                        x => panic!("Unsupported pixel format {x}"),
-                    };
-                    log::debug!("color_data {:?}", color_data.len());
-                    self.video_producer.push((pts_nano, color_data)).unwrap();
+                    let linesizes: Vec<i32> =
+                        frame.linesize.iter().filter(|x| **x > 0).cloned().collect();
+
+                    let data = self.combine_yuv_to_vec(frame);
+                    log::debug!("color_data {:?}", data.len());
+                    self.video_producer
+                        .push(DecodedFrame {
+                            data,
+                            linesizes,
+                            pts: pts_nano,
+                        })
+                        .unwrap();
                 }
             }
 
@@ -359,8 +380,6 @@ impl MediaDecoder {
                         av_make_q(1, ONE_NANOSECOND as i32),
                     );
 
-                    log::debug!("audio pts {:?}", pts_nano);
-
                     let samples_with_pts: Vec<(i64, f32)> = data
                         .iter()
                         .map(|sample| (pts_nano, (*sample as f32) / i32::MAX as f32))
@@ -372,14 +391,19 @@ impl MediaDecoder {
         }
     }
 
-    pub unsafe fn frame_to_yuv420_3_plane(&self, frame: AVFrame) -> Vec<u8> {
+    pub unsafe fn combine_yuv_to_vec(&self, frame: AVFrame) -> Vec<u8> {
         let height = frame.height;
 
         let y_plane_size = (frame.linesize[0] * height) as usize;
         let u_plane_size = (frame.linesize[1] * (height / 2)) as usize;
         let v_plane_size = (frame.linesize[2] * (height / 2)) as usize;
 
-        log::debug!("y size {:?} - u size {:?} - v size {:?}", y_plane_size, u_plane_size, v_plane_size);
+        log::debug!(
+            "y size {:?} - u size {:?} - v size {:?}",
+            y_plane_size,
+            u_plane_size,
+            v_plane_size
+        );
 
         let mut vec = vec![0; y_plane_size + u_plane_size + v_plane_size];
 
@@ -391,50 +415,6 @@ impl MediaDecoder {
         vec[y_plane_size..(y_plane_size + u_plane_size)].copy_from_slice(u);
         vec[(y_plane_size + u_plane_size)..].copy_from_slice(v);
 
-        vec
-    }
-
-    pub unsafe fn frame_to_yuv420_2_plane(&self, frame: AVFrame) -> Vec<u8> {
-        let height = frame.height;
-
-        let y_plane_size = (frame.linesize[0] * height) as usize;
-        let uv_plane_size = (frame.linesize[1] * (height / 2)) as usize;
-
-        log::debug!("y size {:?}", y_plane_size);
-        log::debug!("uv size {:?}", uv_plane_size);
-
-        let mut vec = vec![0; y_plane_size + uv_plane_size];
-
-        let y = slice::from_raw_parts(frame.data[0], y_plane_size);
-        let uv = slice::from_raw_parts(frame.data[1], uv_plane_size);
-
-        vec[..y_plane_size].copy_from_slice(y);
-        vec[y_plane_size..].copy_from_slice(uv);
-
-        vec
-    }
-
-    pub unsafe fn frame_to_yuv420_101e(&self, frame: AVFrame) -> Vec<u8> {
-        let width = frame.width;
-        let height = frame.height;
-
-        let size = (width * height) as usize;
-
-        log::debug!("y size {:?}", size);
-        log::debug!("u size {:?}", size / 2);
-        log::debug!("v size {:?}", size / 2);
-        let mut vec = vec![0; size + (size / 2) + (size / 2)];
-        let y = slice::from_raw_parts(frame.data[0], size);
-        let u = slice::from_raw_parts(frame.data[1], size / 2);
-        let v = slice::from_raw_parts(frame.data[2], size / 2);
-
-        log::debug!("copy y");
-        vec[..size].copy_from_slice(y);
-        log::debug!("copy u");
-        vec[size..(size + size / 2)].copy_from_slice(u);
-        log::debug!("copy v");
-        vec[(size + size / 2)..].copy_from_slice(v);
-        log::debug!("done");
         vec
     }
 }

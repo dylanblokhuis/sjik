@@ -1,3 +1,4 @@
+use epaint::Color32;
 use keyboard_types::Code;
 use std::{
     any::Any,
@@ -23,6 +24,7 @@ use crate::{
     focus::{Focus, FocusState},
     mouse::get_hovered,
     prevent_default::PreventDefault,
+    style::Tailwind,
     RealDom, TaoEvent,
 };
 
@@ -256,6 +258,7 @@ impl BlitzEventHandler {
                             self.state.cursor_state.buttons,
                             self.state.modifier_state,
                         );
+
                         match (hovered, self.state.cursor_state.hovered) {
                             (Some(hovered), Some(old_hovered)) => {
                                 if hovered != old_hovered {
@@ -265,6 +268,8 @@ impl BlitzEventHandler {
                                         data: Arc::new(EventData::Mouse(data.clone())),
                                         bubbles: true,
                                     });
+                                    on_mouse_enter(rdom, hovered);
+
                                     self.queued_events.push(DomEvent {
                                         element: old_hovered,
                                         name: "mouseleave",
@@ -272,6 +277,7 @@ impl BlitzEventHandler {
                                         bubbles: true,
                                     });
                                     self.state.cursor_state.hovered = Some(hovered);
+                                    on_mouse_leave(rdom, old_hovered);
                                 }
                             }
                             (Some(hovered), None) => {
@@ -282,6 +288,7 @@ impl BlitzEventHandler {
                                     bubbles: true,
                                 });
                                 self.state.cursor_state.hovered = Some(hovered);
+                                on_mouse_enter(rdom, hovered);
                             }
                             (None, Some(old_hovered)) => {
                                 self.queued_events.push(DomEvent {
@@ -291,6 +298,7 @@ impl BlitzEventHandler {
                                     bubbles: true,
                                 });
                                 self.state.cursor_state.hovered = None;
+                                on_mouse_leave(rdom, old_hovered);
                             }
                             (None, None) => (),
                         }
@@ -504,4 +512,13 @@ fn map_code(code: &tao::keyboard::KeyCode) -> keyboard_types::Code {
         _ => input_data::keyboard_types::Code::from_str(&code.to_string())
             .unwrap_or(Code::Unidentified),
     }
+}
+
+fn on_mouse_leave(rdom: &mut RealDom, node: shipyard::EntityId) {
+    let mut node = rdom.get_mut(node).unwrap();
+    node.get_mut::<Tailwind>().unwrap().hovered = false;
+}
+fn on_mouse_enter(rdom: &mut RealDom, node: shipyard::EntityId) {
+    let mut node = rdom.get_mut(node).unwrap();
+    node.get_mut::<Tailwind>().unwrap().hovered = true;
 }

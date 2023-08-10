@@ -20,6 +20,6 @@ pub mod hot_reload {
 }
 
 #[derive(Debug, Clone)]
-pub struct Redraw;
+pub struct Redraw(pub bool);
 
 type TaoEvent<'a> = Event<'a, Redraw>;
