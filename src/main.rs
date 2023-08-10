@@ -140,8 +140,10 @@ fn main() {
     });
 
     event_loop.run(move |event, _, control_flow| {
-        let st_event: Event<'static, Redraw> = event.to_static().unwrap();
-        event_tx.send(st_event.clone()).unwrap();
+        let Some(st_event) = event.to_static() else {
+            return;
+        };
+        event_tx.send(st_event.clone()).unwrap();    
 
         match st_event {
             tao::event::Event::WindowEvent {

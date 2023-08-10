@@ -101,15 +101,37 @@ impl MediaRenderPass {
                 },
                 usage: vk::ImageUsageFlags::COLOR_ATTACHMENT
                     | vk::ImageUsageFlags::TRANSFER_SRC
-                    | vk::ImageUsageFlags::SAMPLED,
+                    | vk::ImageUsageFlags::SAMPLED
+                    | vk::ImageUsageFlags::TRANSFER_DST,
                 samples: vk::SampleCountFlags::TYPE_1,
                 mip_levels: 1,
                 array_layers: 1,
                 sharing_mode: vk::SharingMode::EXCLUSIVE,
+                tiling: vk::ImageTiling::OPTIMAL,
                 ..Default::default()
             },
-        );
+        );       
 
+        // make the attachment black, on macOS undefined textures are red for some reason
+        {
+            let attachment = ctx.texture_manager.get(&attachment_handle).unwrap();
+            println!("attachment: {:?}", attachment.format);
+            let texture_bytes = (swapchain.surface_resolution.width * swapchain.surface_resolution.height) * attachment.bytes_per_texel();
+            let black_screen = vec![0u8; texture_bytes as usize];
+    
+            let buffer_handle = ctx.create_buffer_with_data(
+                &BufferDescriptor {
+                    debug_name: "texture_black_screen",
+                    usage: vk::BufferUsageFlags::TRANSFER_SRC,
+                    location: MemoryLocation::CpuToGpu,
+                    ..Default::default()
+                },
+                bytemuck::cast_slice(&black_screen),
+                0,
+            );
+            ctx.copy_buffer_to_texture(&buffer_handle, &attachment_handle);
+        }
+        
         Self {
             pipeline_handle: None,
             vertex_buffer,
