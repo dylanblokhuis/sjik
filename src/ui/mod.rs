@@ -27,10 +27,6 @@ pub fn app(cx: Scope) -> Element {
           //   "Test kinda crazy how this just works"
           // }
 
-          img {
-            class: "w-100",
-            src: "test-1.png",
-          }
 
           div {
             class: "flex bg-white/50 h-100 flex-col",

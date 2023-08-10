@@ -48,7 +48,7 @@ fn main() {
         dioxus_beuk::hot_reload::Config::new().root(env!("CARGO_MANIFEST_DIR")),
     );
 
-    std::env::set_var("RUST_LOG", "debug");
+    std::env::set_var("RUST_LOG", "info");
     simple_logger::SimpleLogger::new().env().init().unwrap();
     let args: Vec<String> = std::env::args().collect();
     let event_loop = EventLoop::<Redraw>::with_user_event();
@@ -62,7 +62,7 @@ fn main() {
     let ctx = Arc::new(beuk::ctx::RenderContext::new(RenderContextDescriptor {
         display_handle: window.raw_display_handle(),
         window_handle: window.raw_window_handle(),
-        present_mode: PresentModeKHR::FIFO_RELAXED,
+        present_mode: PresentModeKHR::IMMEDIATE,
     }));
 
     let app_context = Arc::new(RwLock::new(AppContext {
@@ -126,23 +126,28 @@ fn main() {
         move || {
             application.render(&ctx);
             while let Ok(event) = event_rx.recv() {
-                application.send_event(&event);
                 match event {
-                    Event::WindowEvent {
-                        event: WindowEvent::Resized(physical_size),
-                        window_id: _,
-                        ..
-                    } => {
-                        application.set_size(physical_size);
-                    }
-                    Event::WindowEvent { .. } => {
+                    tao::event::Event::WindowEvent { event: ref w_event, .. } => {
+                        if let tao::event::WindowEvent::Resized(physical_size) = &w_event {
+                            application.set_size(*physical_size);
+                            continue;
+                        } else if let tao::event::WindowEvent::ScaleFactorChanged {
+                            new_inner_size, ..
+                        } = &w_event
+                        {
+                            application.set_size(**new_inner_size);
+                            continue;
+                        }
+        
+                        application.send_event(&event);
+                        application.render(&ctx);
                         event_loop_proxy.send_event(Redraw(true)).unwrap();
                     }
-                    Event::UserEvent(redraw) => {
-                        if redraw.0 {
-                            application.render(&ctx);
-                        }
-                    }
+                  
+                    // Event::UserEvent(redraw) => {
+                    //     if redraw.0 {
+                    //     }
+                    // }
 
                     _ => (),
                 }
@@ -156,22 +161,39 @@ fn main() {
         };
         event_tx.send(st_event.clone()).unwrap();    
 
+        let mut redraw = || {
+            let present_index = ctx.acquire_present_index();
+            present_node.combine_and_draw(
+                &ctx,
+                &ui_attachment_handle,
+                &media_attachment_handle,
+                present_index,
+            );
+            ctx.present_submit(present_index);
+            *control_flow = tao::event_loop::ControlFlow::Wait
+        };
+
         match st_event {
+            tao::event::Event::RedrawEventsCleared if cfg!(windows) => redraw(),
+            tao::event::Event::RedrawRequested(_) if !cfg!(windows) => redraw(),
+
             tao::event::Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
+                event: WindowEvent::CloseRequested | WindowEvent::Destroyed,
                 ..
             } => *control_flow = ControlFlow::Exit,
 
-            tao::event::Event::RedrawRequested(_) => {
-                let present_index = ctx.acquire_present_index();
-                present_node.combine_and_draw(
-                    &ctx,
-                    &ui_attachment_handle,
-                    &media_attachment_handle,
-                    present_index,
-                );
-                ctx.present_submit(present_index);
+            tao::event::Event::MainEventsCleared {
+                ..
+            } => {
+                window.request_redraw();
             }
+
+            tao::event::Event::NewEvents(tao::event::StartCause::ResumeTimeReached {
+                ..
+            }) => {
+                window.request_redraw();
+            }
+
             tao::event::Event::UserEvent(_) => {
                 window.request_redraw();
             }
