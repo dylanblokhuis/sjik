@@ -77,6 +77,7 @@ impl Renderer {
                     sharing_mode: vk::SharingMode::EXCLUSIVE,
                     ..Default::default()
                 },
+                true,
             ))
         } else {
             None
@@ -101,6 +102,7 @@ impl Renderer {
                 sharing_mode: vk::SharingMode::EXCLUSIVE,
                 ..Default::default()
             },
+            true,
         );
 
         let pipeline_handle = ctx.create_graphics_pipeline(&GraphicsPipelineDescriptor {
@@ -228,6 +230,7 @@ impl Renderer {
                     tiling: vk::ImageTiling::OPTIMAL,
                     ..Default::default()
                 },
+                false,
             );
 
             let data = match delta.image.clone() {

@@ -63,7 +63,7 @@ fn main() {
     let ctx = Arc::new(beuk::ctx::RenderContext::new(RenderContextDescriptor {
         display_handle: window.raw_display_handle(),
         window_handle: window.raw_window_handle(),
-        present_mode: PresentModeKHR::default()
+        present_mode: PresentModeKHR::default(),
     }));
 
     let app_context = Arc::new(RwLock::new(AppContext {
@@ -102,7 +102,12 @@ fn main() {
     let mut media_node = MediaRenderPass::new(&ctx);
     let media_attachment_handle = media_node.attachment.clone();
 
-    let mut application = DioxusApp::new(ui::app, &ctx, event_loop.create_proxy(), app_context.clone());
+    let mut application = DioxusApp::new(
+        ui::app,
+        &ctx,
+        event_loop.create_proxy(),
+        app_context.clone(),
+    );
     let ui_attachment_handle = application.get_attachment_handle().clone();
 
     ctx.command_thread_pool.spawn({
@@ -121,32 +126,35 @@ fn main() {
     });
 
     // ui thread
-    let (event_tx, event_rx) = crossbeam_channel::bounded::<Event<'static, Redraw>>(50);
+    let (event_tx, event_rx) = crossbeam_channel::unbounded::<Event<'static, Redraw>>();
     ctx.command_thread_pool.spawn({
         let ctx = ctx.clone();
         let event_loop_proxy = event_loop.create_proxy();
         let app_context = app_context.clone();
-        
+
         move || {
             application.render(&ctx);
             while let Ok(event) = event_rx.recv() {
                 application.send_event(&event);
                 match event {
-                    tao::event::Event::WindowEvent { event: ref w_event, .. } => {
+                    tao::event::Event::WindowEvent {
+                        event: ref w_event, ..
+                    } => {
                         if let tao::event::WindowEvent::Resized(physical_size) = &w_event {
                             app_context.write().unwrap().window_size = *physical_size;
                             application.set_size(*physical_size);
                         } else if let tao::event::WindowEvent::ScaleFactorChanged {
-                            new_inner_size, ..
+                            new_inner_size,
+                            ..
                         } = &w_event
                         {
                             app_context.write().unwrap().window_size = **new_inner_size;
                             application.set_size(**new_inner_size);
                         }
-        
+
                         event_loop_proxy.send_event(Redraw(true)).unwrap();
-                    }                 
-                  
+                    }
+
                     Event::UserEvent(redraw) => {
                         if redraw.0 {
                             application.render(&ctx);
@@ -196,13 +204,11 @@ fn main() {
                     window.request_redraw();
                 }
                 _ => (),
-            },               
+            },
 
-            tao::event::Event::NewEvents(tao::event::StartCause::ResumeTimeReached {
-                ..
-            }) => {
+            tao::event::Event::NewEvents(tao::event::StartCause::ResumeTimeReached { .. }) => {
                 window.request_redraw();
-            }    
+            }
 
             tao::event::Event::UserEvent(redraw_ev) => {
                 if redraw_ev.0 {
@@ -214,6 +220,6 @@ fn main() {
             _ => (),
         }
 
-        event_tx.try_send(st_event).unwrap();    
+        event_tx.try_send(st_event).unwrap();
     });
 }

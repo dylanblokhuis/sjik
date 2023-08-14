@@ -36,6 +36,7 @@ pub struct MediaRenderPass {
     pub yuv: Option<ResourceHandle<Texture>>,
     pub frame_buffer: Option<ResourceHandle<Buffer>>,
     pub attachment: ResourceHandle<Texture>,
+    pub current_aspect_ratio: f32,
 }
 
 impl MediaRenderPass {
@@ -74,15 +75,18 @@ impl MediaRenderPass {
                 tiling: vk::ImageTiling::OPTIMAL,
                 ..Default::default()
             },
-        );       
+            true,
+        );
 
         // make the attachment black, on macOS undefined textures are red for some reason
         {
             let attachment = ctx.texture_manager.get(&attachment_handle).unwrap();
             println!("attachment: {:?}", attachment.format);
-            let texture_bytes = (swapchain.surface_resolution.width * swapchain.surface_resolution.height) * attachment.bytes_per_texel();
+            let texture_bytes = (swapchain.surface_resolution.width
+                * swapchain.surface_resolution.height)
+                * attachment.bytes_per_texel();
             let black_screen = vec![0u8; texture_bytes as usize];
-    
+
             let buffer_handle = ctx.create_buffer_with_data(
                 &BufferDescriptor {
                     debug_name: "texture_black_screen",
@@ -95,7 +99,7 @@ impl MediaRenderPass {
             );
             ctx.copy_buffer_to_texture(&buffer_handle, &attachment_handle);
         }
-        
+
         Self {
             pipeline_handle: None,
             vertex_buffer: None,
@@ -103,6 +107,7 @@ impl MediaRenderPass {
             yuv: None,
             frame_buffer: None,
             attachment: attachment_handle,
+            current_aspect_ratio: 0.0,
         }
     }
 
@@ -112,75 +117,15 @@ impl MediaRenderPass {
         current_video: &CurrentVideo,
         frame: &DecodedFrame,
     ) {
-        // means that we already have the buffers setup
-        if self.vertex_buffer.is_some() {
-            return;
-        }
-
-        // calculate uvs based on video size
         let screen_size = ctx.get_swapchain().surface_resolution;
         let screen_aspect = screen_size.width as f32 / screen_size.height as f32;
-        let video_aspect = current_video.width as f32 / current_video.height as f32;
-
-        let positions = if screen_aspect > video_aspect {
-            // Pillarbox
-            let scale_x = video_aspect / screen_aspect;
-            [
-                [-scale_x, -1.0],
-                [scale_x, -1.0],
-                [scale_x, 1.0],
-                [-scale_x, -1.0],
-                [scale_x, 1.0],
-                [-scale_x, 1.0],
-            ]
-        } else {
-            // Letterbox
-            let scale_y = screen_aspect / video_aspect;
-            [
-                [-1.0, -scale_y],
-                [1.0, -scale_y],
-                [1.0, scale_y],
-                [-1.0, -scale_y],
-                [1.0, scale_y],
-                [-1.0, scale_y],
-            ]
-        };
-
-        let vertex_buffer = ctx.create_buffer_with_data(
-            &BufferDescriptor {
-                debug_name: "vertices",
-                size: std::mem::size_of::<[Vertex; 6]>() as DeviceSize,
-                usage: BufferUsageFlags::VERTEX_BUFFER,
-                location: MemoryLocation::GpuOnly,
-            },
-            bytemuck::cast_slice(&[
-                Vertex {
-                    pos: positions[0],
-                    uv: [0.0, 0.0],
-                },
-                Vertex {
-                    pos: positions[1],
-                    uv: [1.0, 0.0],
-                },
-                Vertex {
-                    pos: positions[2],
-                    uv: [1.0, 1.0],
-                },
-                Vertex {
-                    pos: positions[3],
-                    uv: [0.0, 0.0],
-                },
-                Vertex {
-                    pos: positions[4],
-                    uv: [1.0, 1.0],
-                },
-                Vertex {
-                    pos: positions[5],
-                    uv: [0.0, 1.0],
-                },
-            ]),
-            0,
-        );
+        if screen_aspect != self.current_aspect_ratio {
+            self.set_vertex_buffer(ctx, current_video);
+        }
+        // means that we already have the buffers setup
+        if self.yuv.is_some() {
+            return;
+        }
 
         let is_10_bit = frame.linesizes.iter().sum::<i32>() > 15000;
         log::info!(
@@ -300,6 +245,7 @@ impl MediaRenderPass {
                 sharing_mode: vk::SharingMode::EXCLUSIVE,
                 ..Default::default()
             },
+            true,
         );
 
         {
@@ -371,10 +317,76 @@ impl MediaRenderPass {
             usage: BufferUsageFlags::TRANSFER_SRC | BufferUsageFlags::TRANSFER_DST,
         });
 
-        self.vertex_buffer = Some(vertex_buffer);
         self.yuv = Some(yuv);
         self.frame_buffer = Some(frame_buffer);
         self.pipeline_handle = Some(pipeline_handle);
+    }
+
+    pub fn set_vertex_buffer(&mut self, ctx: &RenderContext, current_video: &CurrentVideo) {
+        let screen_size = ctx.get_swapchain().surface_resolution;
+        let screen_aspect = screen_size.width as f32 / screen_size.height as f32;
+        let video_aspect = current_video.width as f32 / current_video.height as f32;
+
+        let positions = if screen_aspect > video_aspect {
+            // Pillarbox
+            let scale_x = video_aspect / screen_aspect;
+            [
+                [-scale_x, -1.0],
+                [scale_x, -1.0],
+                [scale_x, 1.0],
+                [-scale_x, -1.0],
+                [scale_x, 1.0],
+                [-scale_x, 1.0],
+            ]
+        } else {
+            // Letterbox
+            let scale_y = screen_aspect / video_aspect;
+            [
+                [-1.0, -scale_y],
+                [1.0, -scale_y],
+                [1.0, scale_y],
+                [-1.0, -scale_y],
+                [1.0, scale_y],
+                [-1.0, scale_y],
+            ]
+        };
+
+        self.current_aspect_ratio = screen_aspect;
+        self.vertex_buffer = Some(ctx.create_buffer_with_data(
+            &BufferDescriptor {
+                debug_name: "vertices",
+                size: std::mem::size_of::<[Vertex; 6]>() as DeviceSize,
+                usage: BufferUsageFlags::VERTEX_BUFFER,
+                location: MemoryLocation::GpuOnly,
+            },
+            bytemuck::cast_slice(&[
+                Vertex {
+                    pos: positions[0],
+                    uv: [0.0, 0.0],
+                },
+                Vertex {
+                    pos: positions[1],
+                    uv: [1.0, 0.0],
+                },
+                Vertex {
+                    pos: positions[2],
+                    uv: [1.0, 1.0],
+                },
+                Vertex {
+                    pos: positions[3],
+                    uv: [0.0, 0.0],
+                },
+                Vertex {
+                    pos: positions[4],
+                    uv: [1.0, 1.0],
+                },
+                Vertex {
+                    pos: positions[5],
+                    uv: [0.0, 1.0],
+                },
+            ]),
+            0,
+        ));
     }
 
     pub unsafe fn copy_yuv420_frame_to_gpu(

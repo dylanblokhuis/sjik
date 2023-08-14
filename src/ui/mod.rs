@@ -50,7 +50,7 @@ pub fn app(cx: Scope) -> Element {
               }
 
               div {
-                class: "bg-white/50 h-64 px-20 flex items-center justify-center rounded-5",
+                class: "bg-white/50 h-64 px-20 flex items-center justify-center text-sky-900 rounded-5 hover:bg-white/60",
                 onclick: move |_| {
                   ctx.read().unwrap().command_sender.as_ref().unwrap().send(MediaCommands::Pause).unwrap();
                 },
@@ -64,7 +64,7 @@ pub fn app(cx: Scope) -> Element {
               }
 
               div {
-                class: "bg-white/50 h-64 px-20 flex items-center justify-center rounded-5",
+                class: "bg-white/50 h-64 px-20 flex items-center justify-center text-sky-900 rounded-5 hover:bg-white/60",
                 onclick: move |_| {
                   ctx.read().unwrap().command_sender.as_ref().unwrap().send(MediaCommands::Pause).unwrap();
                 },
