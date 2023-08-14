@@ -10,8 +10,8 @@ dioxus = { git = "https://github.com/DioxusLabs/dioxus/" }
 dioxus-native-core = { git = "https://github.com/DioxusLabs/dioxus/", features = ["dioxus"] }
 dioxus-native-core-macro = { git = "https://github.com/DioxusLabs/dioxus/" }
 taffy = { git = "https://github.com/DioxusLabs/taffy/" }
-tokio = { version = "1.25.0", features = ["sync", "rt", "macros"] }
-tao = { version = "0.21.0", features = ["serde"] }
+tokio = { version = "1.25.0", features = ["sync", "rt", "macros", "time"] }
+tao = { version = "0.22.0", features = ["serde"] }
 raw-window-handle = "0.5.0"
 serde_json = "1.0.91"
 serde = { version = "1.0.152", features = ["derive"] }
@@ -28,6 +28,8 @@ tracing = "0.1"
 log = "0.4"
 usvg = "0.35.0"
 resvg = "0.35.0"
+uuid = { version = "1.2.2", features = ["v4"]}
+tween = "2.0.1"
 
 [features]
 hot-reload = ["dioxus-hot-reload"]

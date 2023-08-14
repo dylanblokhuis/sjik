@@ -8,11 +8,10 @@ use media_render_pass::MediaRenderPass;
 use present_render_pass::PresentRenderPass;
 use tao::dpi::PhysicalSize;
 use tao::event::Event;
-use tao::event_loop::ControlFlow;
-use tao::{event::WindowEvent, event_loop::EventLoop, window::WindowBuilder};
+use tao::event_loop::{ControlFlow, EventLoopBuilder};
+use tao::{event::WindowEvent, window::WindowBuilder};
 
 use std::sync::{Arc, RwLock};
-use std::time::{Duration, Instant};
 
 mod decoder;
 mod media_render_pass;
@@ -52,7 +51,7 @@ fn main() {
     std::env::set_var("RUST_LOG", "info");
     simple_logger::SimpleLogger::new().env().init().unwrap();
     let args: Vec<String> = std::env::args().collect();
-    let event_loop = EventLoop::<Redraw>::with_user_event();
+    let event_loop = EventLoopBuilder::<Redraw>::with_user_event().build();
 
     let window = WindowBuilder::new()
         .with_title("Sjik")

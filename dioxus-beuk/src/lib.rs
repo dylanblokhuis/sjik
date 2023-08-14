@@ -7,6 +7,7 @@ mod application;
 pub use application::DioxusApp;
 mod events;
 mod focus;
+pub mod hooks;
 mod image;
 mod mouse;
 mod paint;

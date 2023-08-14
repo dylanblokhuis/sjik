@@ -1,16 +1,27 @@
 use dioxus::prelude::*;
+use dioxus_beuk::hooks::{animation::Animation, use_animation};
 
 use crate::{decoder::MediaCommands, AppContextRef};
 
 pub fn app(cx: Scope) -> Element {
     let ctx = use_context::<AppContextRef>(cx).unwrap();
-    let size = ctx.read().unwrap().window_size;
-    let window_width = size.width;
-    let window_height = size.height;
+    let animation = use_animation(cx, 0.0);
+    let progress = animation.value();
+
+    use_effect(cx, (&progress,), move |(val,)| {
+        if val == 100.0 {
+            animation.start(Animation::new_linear(100.0..=0.0, 1000));
+        }
+
+        if val == 0.0 {
+            animation.start(Animation::new_linear(0.0..=100.0, 1000));
+        }
+        async move {}
+    });
 
     cx.render(rsx! {
       div {
-        class: "w-{window_width} h-{window_height} bg-transparent flex flex-col justify-end",
+        class: "w-full h-full bg-transparent flex flex-col justify-end",
 
           // div {
           //   onclick: move |_| count.modify(|v| {v.add(1)}),
@@ -22,17 +33,16 @@ pub fn app(cx: Scope) -> Element {
           //   "Remove image"
           // }
 
-          // div {
-          //   class: "text-red-500",
-          //   "Test kinda crazy how this just works"
-          // }
-
 
           div {
             class: "flex bg-white/50 h-100 flex-col",
 
             div {
-              class: "bg-white/30 h-5"
+              class: "bg-white/30 h-5",
+
+              div {
+                class: "bg-sky-500 h-5 w-{progress}%",
+              }
             }
 
             div {

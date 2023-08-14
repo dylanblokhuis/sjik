@@ -240,7 +240,7 @@ impl Default for Tailwind {
 impl Tailwind {
     fn handle_size(class: &str) -> Dimension {
         match class {
-            "full" => Dimension::Percent(100.0),
+            "full" => Dimension::Percent(1.0),
             "auto" => Dimension::AUTO,
             class => {
                 if class.ends_with('%') {
@@ -249,7 +249,8 @@ impl Tailwind {
                             .strip_suffix('%')
                             .unwrap()
                             .parse::<f32>()
-                            .unwrap_or(0.0),
+                            .unwrap_or(0.0)
+                            / 100.0,
                     )
                 } else {
                     Dimension::Length(class.parse::<f32>().unwrap_or(0.0))

@@ -1,4 +1,3 @@
-use epaint::Color32;
 use keyboard_types::Code;
 use std::{
     any::Any,
@@ -7,7 +6,7 @@ use std::{
     sync::Arc,
     time::{Duration, Instant},
 };
-use taffy::{prelude::Size, Taffy};
+use taffy::Taffy;
 use tao::event::MouseButton;
 
 use dioxus::html::{
@@ -462,19 +461,6 @@ impl BlitzEventHandler {
                 event: _,
                 ..
             } => (),
-            tao::event::Event::MenuEvent {
-                window_id: _,
-                menu_id: _,
-                origin: _,
-                ..
-            } => (),
-            tao::event::Event::TrayEvent {
-                bounds: _,
-                event: _,
-                position: _,
-                ..
-            } => (),
-            tao::event::Event::GlobalShortcutEvent(_) => (),
             tao::event::Event::Suspended => (),
             tao::event::Event::Resumed => (),
             tao::event::Event::MainEventsCleared => (),

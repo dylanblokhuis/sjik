@@ -286,7 +286,7 @@ impl MediaDecoder {
         (width, height)
     }
 
-    pub fn get_decoded_frame(&mut self, frame: Frame) -> Vec<Frame> {
+    fn get_decoded_frame(&mut self, frame: Frame) -> Vec<Frame> {
         let frame = unsafe {
             if self.options.use_hw_accel {
                 let sw_frame = av_frame_alloc();

@@ -7,7 +7,7 @@ edition = "2021"
 
 [dependencies]
 beuk = { path = "../beuk" }
-tao = { version = "0.21.0", features = ["serde"] }
+tao = { version = "0.22.0", features = ["serde"] }
 bytemuck = { version = "1.13", features = ["derive"] }
 stainless_ffmpeg = { path = "./stainless-ffmpeg" }
 dioxus_beuk = { path = "./dioxus-beuk" }

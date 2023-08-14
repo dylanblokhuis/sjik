@@ -237,7 +237,7 @@ async fn spawn_dom<T: Clone + 'static>(
             height: AvailableSpace::Definite(height),
         };
 
-        if !to_rerender.is_empty() || last_size != size {    
+        if !to_rerender.is_empty() || last_size != size {
             if last_size != size {
                 renderer.vdom.mark_dirty(ScopeId(0));
             }

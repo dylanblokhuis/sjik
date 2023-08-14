@@ -1,5 +1,5 @@
 use dioxus_native_core::prelude::*;
-use epaint::{ClippedShape, Color32, FontId};
+use epaint::{ClippedShape, Color32};
 
 use taffy::prelude::Layout;
 use taffy::Taffy;
@@ -44,13 +44,19 @@ fn render_node(taffy: &Taffy, node: NodeRef, renderer: &mut Renderer, location: 
                 tailwind.text.color,
             );
             let clip = shape.visual_bounding_rect();
-            renderer.shapes.push(ClippedShape(clip, shape));
+            renderer.shapes.push(ClippedShape {
+                clip_rect: clip,
+                shape,
+            });
         }
         NodeType::Element(_) => {
             let shape = get_shape(layout, node, location);
             let clip = shape.visual_bounding_rect();
 
-            renderer.shapes.push(ClippedShape(clip, shape));
+            renderer.shapes.push(ClippedShape {
+                clip_rect: clip,
+                shape,
+            });
             for child in node.children() {
                 render_node(taffy, child, renderer, location);
             }
