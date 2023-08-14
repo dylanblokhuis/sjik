@@ -12,6 +12,7 @@ use tao::event_loop::ControlFlow;
 use tao::{event::WindowEvent, event_loop::EventLoop, window::WindowBuilder};
 
 use std::sync::{Arc, RwLock};
+use std::time::{Duration, Instant};
 
 mod decoder;
 mod media_render_pass;
@@ -55,14 +56,14 @@ fn main() {
 
     let window = WindowBuilder::new()
         .with_title("Sjik")
-        .with_inner_size(tao::dpi::LogicalSize::new(1280.0, 720.0))
+        .with_inner_size(tao::dpi::LogicalSize::new(1028.0, 768.0))
         .build(&event_loop)
         .unwrap();
 
     let ctx = Arc::new(beuk::ctx::RenderContext::new(RenderContextDescriptor {
         display_handle: window.raw_display_handle(),
         window_handle: window.raw_window_handle(),
-        present_mode: PresentModeKHR::IMMEDIATE,
+        present_mode: PresentModeKHR::default()
     }));
 
     let app_context = Arc::new(RwLock::new(AppContext {
@@ -101,12 +102,13 @@ fn main() {
     let mut media_node = MediaRenderPass::new(&ctx);
     let media_attachment_handle = media_node.attachment.clone();
 
-    let mut application = DioxusApp::new(ui::app, &ctx, event_loop.create_proxy(), app_context);
+    let mut application = DioxusApp::new(ui::app, &ctx, event_loop.create_proxy(), app_context.clone());
     let ui_attachment_handle = application.get_attachment_handle().clone();
 
     ctx.command_thread_pool.spawn({
         let ctx = ctx.clone();
         let event_loop_proxy = event_loop.create_proxy();
+        let current_video = current_video.clone();
         move || {
             while let Ok(frame) = decoder_rx.recv() {
                 if let Some(current_video) = current_video.read().unwrap().as_ref() {
@@ -119,35 +121,37 @@ fn main() {
     });
 
     // ui thread
-    let (event_tx, event_rx) = crossbeam_channel::unbounded::<Event<'static, Redraw>>();
+    let (event_tx, event_rx) = crossbeam_channel::bounded::<Event<'static, Redraw>>(50);
     ctx.command_thread_pool.spawn({
         let ctx = ctx.clone();
         let event_loop_proxy = event_loop.create_proxy();
+        let app_context = app_context.clone();
+        
         move || {
             application.render(&ctx);
             while let Ok(event) = event_rx.recv() {
+                application.send_event(&event);
                 match event {
                     tao::event::Event::WindowEvent { event: ref w_event, .. } => {
                         if let tao::event::WindowEvent::Resized(physical_size) = &w_event {
+                            app_context.write().unwrap().window_size = *physical_size;
                             application.set_size(*physical_size);
-                            continue;
                         } else if let tao::event::WindowEvent::ScaleFactorChanged {
                             new_inner_size, ..
                         } = &w_event
                         {
+                            app_context.write().unwrap().window_size = **new_inner_size;
                             application.set_size(**new_inner_size);
-                            continue;
                         }
         
-                        application.send_event(&event);
-                        application.render(&ctx);
                         event_loop_proxy.send_event(Redraw(true)).unwrap();
-                    }
+                    }                 
                   
-                    // Event::UserEvent(redraw) => {
-                    //     if redraw.0 {
-                    //     }
-                    // }
+                    Event::UserEvent(redraw) => {
+                        if redraw.0 {
+                            application.render(&ctx);
+                        }
+                    }
 
                     _ => (),
                 }
@@ -156,10 +160,11 @@ fn main() {
     });
 
     event_loop.run(move |event, _, control_flow| {
+        *control_flow = tao::event_loop::ControlFlow::Wait;
+
         let Some(st_event) = event.to_static() else {
             return;
         };
-        event_tx.send(st_event.clone()).unwrap();    
 
         let mut redraw = || {
             let present_index = ctx.acquire_present_index();
@@ -170,10 +175,9 @@ fn main() {
                 present_index,
             );
             ctx.present_submit(present_index);
-            *control_flow = tao::event_loop::ControlFlow::Wait
         };
 
-        match st_event {
+        match st_event.clone() {
             tao::event::Event::RedrawEventsCleared if cfg!(windows) => redraw(),
             tao::event::Event::RedrawRequested(_) if !cfg!(windows) => redraw(),
 
@@ -182,22 +186,34 @@ fn main() {
                 ..
             } => *control_flow = ControlFlow::Exit,
 
-            tao::event::Event::MainEventsCleared {
-                ..
-            } => {
-                window.request_redraw();
-            }
+            Event::WindowEvent { event, .. } => match event {
+                WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+                    ctx.recreate_swapchain(new_inner_size.width, new_inner_size.height);
+                    window.request_redraw();
+                }
+                WindowEvent::Resized(size) => {
+                    ctx.recreate_swapchain(size.width, size.height);
+                    window.request_redraw();
+                }
+                _ => (),
+            },               
 
             tao::event::Event::NewEvents(tao::event::StartCause::ResumeTimeReached {
                 ..
             }) => {
                 window.request_redraw();
-            }
+            }    
 
-            tao::event::Event::UserEvent(_) => {
-                window.request_redraw();
+            tao::event::Event::UserEvent(redraw_ev) => {
+                if redraw_ev.0 {
+                    window.request_redraw();
+                } else {
+                    redraw();
+                }
             }
             _ => (),
         }
+
+        event_tx.try_send(st_event).unwrap();    
     });
 }

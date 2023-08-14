@@ -461,7 +461,7 @@ fn setup_audio_stream(
                 let mut data_without_pts: Vec<(i64, f32)> = vec![(0, 0.0); data.len()];
                 audio_consumer.pop_slice(&mut data_without_pts);
                 for (i, (_, sample)) in data_without_pts.iter().enumerate() {
-                    data[i] = *sample;
+                    data[i] = *sample * 0.0;
                 }
 
                 data_without_pts

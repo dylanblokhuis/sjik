@@ -124,6 +124,7 @@ impl DioxusApp {
     pub fn set_size(&mut self, size: PhysicalSize<u32>) {
         // the window size is zero when minimized which causes the renderer to panic
         if size.width > 0 && size.height > 0 {
+            println!("set_size: {:?}", size);
             self.dom.set_size(size);
         }
     }
@@ -210,7 +211,6 @@ async fn spawn_dom<T: Clone + 'static>(
             _ = redraw_receiver.recv() => {},
             Some(event) = event_receiver.recv() => {
                 let DomEvent { name, data, element, bubbles } = event;
-
                 let mut rdom = rdom.write().ok()?;
                 renderer.handle_event(rdom.get_mut(element)?, name, data, bubbles);
             }
@@ -219,7 +219,6 @@ async fn spawn_dom<T: Clone + 'static>(
         let mut rdom = rdom.write().ok()?;
         // render after the event has been handled
         let root_id = rdom.root_id();
-
         renderer.update(rdom.get_mut(root_id)?);
 
         let mut ctx = SendAnyMap::new();
@@ -237,7 +236,8 @@ async fn spawn_dom<T: Clone + 'static>(
             width: AvailableSpace::Definite(width),
             height: AvailableSpace::Definite(height),
         };
-        if !to_rerender.is_empty() || last_size != size {
+
+        if !to_rerender.is_empty() || last_size != size {    
             if last_size != size {
                 renderer.vdom.mark_dirty(ScopeId(0));
             }
